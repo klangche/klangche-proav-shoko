@@ -1,5 +1,5 @@
 # proav-shoko_powershell.ps1 - Shōko Main Logic
-# Trees + ratings first, analytics log under them after stop, timer in header, logging start/end
+# Full original data re-shown after analytics, timer in header, logging start/end, all events
 
 $ErrorActionPreference = 'Stop'
 
@@ -228,7 +228,7 @@ if ($runAnalytics -match '^[Yy]') {
     $displayHotplugs = 0
     $displayEdidIssues = 0
 
-    # Print header with timer placeholder
+    # Header with timer
     Write-Host "`nDuration: 00:00:00.000`n" -ForegroundColor Green
     Write-Host "───────────────────────────────────────────────────────────────" -ForegroundColor Gray
 
@@ -241,10 +241,10 @@ if ($runAnalytics -match '^[Yy]') {
             $elapsed = (Get-Date) - $startTime
             $elapsedStr = "{0:hh\:mm\:ss\.fff}" -f $elapsed
 
-            # Update timer in header (overwrite line)
+            # Update timer in header
             Write-Host "`rDuration: $elapsedStr" -NoNewline -ForegroundColor Green
 
-            # Fetch recent PnP events (broad, all)
+            # Fetch recent PnP events (broad capture)
             $recent = Get-WinEvent -FilterHashtable @{
                 LogName = 'Microsoft-Windows-Kernel-PnP/Configuration'
                 StartTime = (Get-Date).AddMinutes(-10)
@@ -278,7 +278,7 @@ if ($runAnalytics -match '^[Yy]') {
                 break
             }
 
-            Start-Sleep -Seconds 5
+            Start-Sleep -Seconds 2
         }
     }
     catch {
