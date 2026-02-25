@@ -1,5 +1,5 @@
-# proav-shoko_powershell.ps1 - Shōko Main Logic (USB + Display always shown, then analytics)
-# PowerShell 5.1 compatible
+# proav-shoko_powershell.ps1 - Shōko Main Logic
+# USB tree + display tree always shown, combined report, analytics loop
 
 $ErrorActionPreference = 'Stop'
 
@@ -9,7 +9,7 @@ try {
     $Version = $Config.version
 } catch {
     $Version = "local"
-    $Config = [PSCustomObject]@{ version = "local" }
+    $Config = [PSCustomObject]@{ version = "local"; scoring = [PSCustomObject]@{ minScore = 1 } }
 }
 
 function Get-Color { param($n) switch($n){ "cyan"{"Cyan"} "magenta"{"Magenta"} "yellow"{"Yellow"} "green"{"Green"} "gray"{"Gray"} default{"White"} } }
@@ -21,14 +21,14 @@ Write-Host "====================================================================
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 if (-not $isAdmin) {
-    Write-Host "Basic mode (limited analytics)" -ForegroundColor Yellow
+    Write-Host "Basic mode – full analytics requires admin" -ForegroundColor Yellow
 }
 
 $dateStamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $outTxt = "$env:TEMP\shoko-report-$dateStamp.txt"
 $outHtml = "$env:TEMP\shoko-report-$dateStamp.html"
 
-$htmlContent = "<pre>Shōko Report - $dateStamp`n`n"
+$htmlContent = "<html><body style='background:#000;color:#0f0;font-family:Consolas;'><pre>Shōko Report - $dateStamp`n`n"
 
 # ────────────────────────────────────────────────────────────────────────────────
 # USB TREE – always shown
@@ -95,7 +95,7 @@ function Print-Tree { param($id, $level, $prefix, $isLast)
 foreach ($root in $roots) { Print-Tree $root 0 "" $true }
 
 $numTiers = $maxHops + 1
-$baseStabilityScore = [Math]::Max(1, 9 - $maxHops)
+$baseStabilityScore = [Math]::Max($Config.scoring.minScore, (9 - $maxHops))
 
 $statusLines = @()
 foreach ($plat in $Config.platformStability.PSObject.Properties.Name) {
@@ -119,7 +119,7 @@ Write-Host $statusSummary
 Write-Host ""
 Write-Host "HOST SUMMARY: STABLE (Score: $baseStabilityScore/10)" -ForegroundColor Green
 
-$htmlContent += "USB TREE`n$treeOutput`nMax hops: $maxHops | Tiers: $numTiers`nStability:`n$statusSummary`nScore: $baseStabilityScore/10`n`n"
+$htmlContent += "USB TREE`n$treeOutput`nMax hops: $maxHops | Tiers: $numTiers | Devices: $($devices.Count) | Hubs: $($hubs.Count)`n`nSTABILITY PER PLATFORM`n$statusSummary`n`nHOST SUMMARY: STABLE (Score: $baseStabilityScore/10)`n`n"
 
 # ────────────────────────────────────────────────────────────────────────────────
 # DISPLAY TREE – shown immediately after USB tree
@@ -128,42 +128,16 @@ $htmlContent += "USB TREE`n$treeOutput`nMax hops: $maxHops | Tiers: $numTiers`nS
 Write-Host ""
 Write-Host "Enumerating displays..." -ForegroundColor Gray
 
-function Get-DisplayTree {
-    function Decode-Connection { param([int]$v)
-        $b = $v -band 0x7FFFFFFF
-        switch ($b) {
-            -2 {"Uninitialized"} -1 {"Other/Unknown"} 0 {"VGA"} 5 {"HDMI"} 10 {"DisplayPort"} 11 {"DP Alt Mode"} default {"Unknown ($v)"}
-        }
-    }
+$displayTreeOutput = ""
 
-    function Get-ConnColor { param([string]$t)
-        if ($t -like "*HDMI*") { "Yellow" } elseif ($t -like "*DisplayPort*") { "Cyan" } else { "Gray" }
-    }
+$monitors = Get-CimInstance -Namespace root\wmi -Class WmiMonitorID -EA SilentlyContinue
+$connections = Get-CimInstance -Namespace root\wmi -Class WmiMonitorConnectionParams -EA SilentlyContinue
+$controllers = Get-CimInstance Win32_VideoController -EA SilentlyContinue
 
-    function Detect-Transport { param([string]$inst, [string]$adapt)
-        if ($adapt -match "DisplayLink") { return "USB Graphics (DisplayLink)" }
-        if ($inst -match "DISPLAYPORT") { return "DP / DP Alt Mode" }
-        if ($inst -match "USB") { return "USB-C Dock / Alt Mode" }
-        if ($inst -match "TBT|THUNDER") { return "Thunderbolt" }
-        return "Direct / Unknown"
-    }
-
-    function Detect-MST { param([string]$inst) $inst -match "&MI_" }
-
-    $monitors = Get-CimInstance -Namespace root\wmi -Class WmiMonitorID -EA SilentlyContinue
-    $connections = Get-CimInstance -Namespace root\wmi -Class WmiMonitorConnectionParams -EA SilentlyContinue
-    $controllers = Get-CimInstance Win32_VideoController -EA SilentlyContinue
-
-    if (-not $monitors -or $monitors.Count -eq 0) {
-        Write-Host "No displays detected." -ForegroundColor Gray
-        return
-    }
-
-    Write-Host ""
+if ($monitors -and $monitors.Count -gt 0) {
     Write-Host "DISPLAY TREE & ANALYTICS" -ForegroundColor Magenta
     Write-Host "==============================================================================" -ForegroundColor Cyan
 
-    $displayTreeOutput = ""
     for ($i = 0; $i -lt $monitors.Count; $i++) {
         $m = $monitors[$i]
         $c = $connections | Where-Object { $_.InstanceName -eq $m.InstanceName } | Select-Object -First 1
@@ -173,20 +147,20 @@ function Get-DisplayTree {
         $serialRaw = if ($m.SerialNumberID -and $m.SerialNumberID -ne 0) { ($m.SerialNumberID | ForEach-Object { [char]$_ }) -join '' } else { "N/A" }
         $serial = $serialRaw.Trim()
 
-        $connType = Decode-Connection $c.VideoOutputTechnology
-        $connColor = Get-ConnColor $connType
+        $connType = if ($c.VideoOutputTechnology -eq 10) { "DisplayPort (External)" } elseif ($c.VideoOutputTechnology -eq 11) { "DisplayPort (Embedded / Alt Mode)" } elseif ($c.VideoOutputTechnology -eq 5) { "HDMI" } else { "Unknown ($($c.VideoOutputTechnology))" }
+        $connColor = if ($connType -like "*HDMI*") { "Yellow" } elseif ($connType -like "*DisplayPort*") { "Cyan" } else { "Gray" }
 
         $adapter = $controllers | Where-Object { $m.InstanceName -like "*$($_.PNPDeviceID)*" } | Select-Object -First 1
         $adapterName = if ($adapter) { $adapter.Name } else { "" }
-        $transport = Detect-Transport $m.InstanceName $adapterName
+        $transport = if ($adapterName -match "DisplayLink") { "USB Graphics (DisplayLink)" } elseif ($m.InstanceName -match "DISPLAYPORT") { "DP / DP Alt Mode" } elseif ($m.InstanceName -match "USB") { "USB-C Dock / Alt Mode" } elseif ($m.InstanceName -match "TBT|THUNDER") { "Thunderbolt" } else { "Direct / Unknown" }
 
-        $isMST = Detect-MST $m.InstanceName
+        $isMST = $m.InstanceName -match "&MI_"
 
         $displayTreeOutput += "└─ $name`n"
         $displayTreeOutput += " ├─ Connection : $connType`n"
         $displayTreeOutput += " ├─ Path       : $transport`n"
         if ($isMST) { $displayTreeOutput += " ├─ MST Chain  : YES`n" }
-        if ($adapterName -match "DisplayLink") { $displayTreeOutput += " ├─ Adapter    : DisplayLink`n" }
+        if ($adapterName -match "DisplayLink") { $displayTreeOutput += " ├─ Adapter    : DisplayLink (software)`n" }
 
         if ($isAdmin) {
             try {
@@ -194,9 +168,9 @@ function Get-DisplayTree {
                 $size = if ($params) { "$($params.MaxHorizontalImageSize) x $($params.MaxVerticalImageSize) cm" } else { "N/A" }
                 $displayTreeOutput += " ├─ Size       : $size`n"
                 $displayTreeOutput += " ├─ Serial     : $serial`n"
-                $displayTreeOutput += " └─ Analytics  : Deep mode`n"
+                $displayTreeOutput += " └─ Analytics  : Deep mode active`n"
             } catch {
-                $displayTreeOutput += " └─ Analytics  : Partial`n"
+                $displayTreeOutput += " └─ Analytics  : Partial (error)`n"
             }
         } else {
             $displayTreeOutput += " └─ Analytics  : Basic mode`n"
@@ -205,22 +179,23 @@ function Get-DisplayTree {
     }
 
     Write-Host $displayTreeOutput
-
     $htmlContent += "DISPLAY TREE & ANALYTICS`n$displayTreeOutput`n"
+} else {
+    Write-Host "No displays detected." -ForegroundColor Gray
+    $htmlContent += "No displays detected.`n"
 }
 
-Get-DisplayTree
-
 # ────────────────────────────────────────────────────────────────────────────────
-# Reports & browser
+# Save combined report & ask browser
 # ────────────────────────────────────────────────────────────────────────────────
 
-$htmlContent += "</pre>"
+$htmlContent += "</pre></body></html>"
 $htmlContent | Out-File $outHtml -Encoding UTF8
-$txtContent = $htmlContent -replace "<pre>","" -replace "</pre>",""
+
+$txtContent = $htmlContent -replace "<[^>]+>","" -replace "\s+"," "
 $txtContent | Out-File $outTxt
 
-Write-Host "Reports saved: $outTxt / $outHtml" -ForegroundColor Gray
+Write-Host "Combined report saved: $outTxt / $outHtml" -ForegroundColor Gray
 
 $openBrowser = Read-Host "Open HTML report in browser? (y/n)"
 if ($openBrowser -match '^[Yy]') {
@@ -228,17 +203,31 @@ if ($openBrowser -match '^[Yy]') {
 }
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Deep Analytics (USB + Display) – loop until Ctrl+C
+# Deep Analytics – USB + Display monitoring loop
 # ────────────────────────────────────────────────────────────────────────────────
 
 $runAnalytics = Read-Host "Run deep analytics (USB + Display monitoring, Ctrl+C to stop)? (y/n)"
 if ($runAnalytics -match '^[Yy]' -and $isAdmin) {
-    Write-Host "Deep analytics mode started. Press Ctrl+C to exit." -ForegroundColor Green
+    Write-Host "Deep analytics mode started (USB + Display). Press Ctrl+C to exit." -ForegroundColor Green
 
     try {
         while ($true) {
-            Write-Host "$(Get-Date -Format HH:mm:ss) - Monitoring USB & Display stability..." -ForegroundColor Green
-            # Add your real monitoring code here (events, counters, re-check hops, display PnP events, etc.)
+            $time = Get-Date -Format "HH:mm:ss"
+            Write-Host "$time - Monitoring USB & Display stability..."
+
+            # Optional: re-check recent PnP events for disconnects / hotplugs
+            $recentEvents = Get-WinEvent -FilterHashtable @{
+                LogName = 'Microsoft-Windows-Kernel-PnP/Configuration'
+                StartTime = (Get-Date).AddMinutes(-5)
+            } -MaxEvents 50 -EA SilentlyContinue |
+                Where-Object { $_.Message -match "(?i)(usb|display|monitor|connect|disconnect|hotplug|EDID)" }
+
+            if ($recentEvents.Count -gt 0) {
+                Write-Host "  Recent events: $($recentEvents.Count) (USB/Display related)" -ForegroundColor Yellow
+            } else {
+                Write-Host "  No recent events" -ForegroundColor Green
+            }
+
             Start-Sleep -Seconds 5
         }
     }
