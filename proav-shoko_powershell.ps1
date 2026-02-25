@@ -1,5 +1,5 @@
 # proav-shoko_powershell.ps1 - Shōko Main Logic
-# Clean analytics view: cleared, elapsed time with ms, divider, all events appended live
+# Clean analytics view, any keypress to stop, elapsed ms, divider, all events
 
 $ErrorActionPreference = 'Stop'
 
@@ -201,11 +201,11 @@ $browserChoice = Read-Host "Open HTML report in browser? (y/n/a)"
 $runAnalytics = "n"
 if ($browserChoice -match '^[Yy]') {
     Start-Process $outHtml
-    $runAnalytics = Read-Host "Run deep analytics (USB + Display events, Ctrl+C to stop)? (y/n)"
+    $runAnalytics = Read-Host "Run deep analytics (USB + Display events, press any key to stop)? (y/n)"
 } elseif ($browserChoice -match '^[Aa]') {
     $runAnalytics = "y"
 } else {
-    $runAnalytics = Read-Host "Run deep analytics (USB + Display events, Ctrl+C to stop)? (y/n)"
+    $runAnalytics = Read-Host "Run deep analytics (USB + Display events, press any key to stop)? (y/n)"
 }
 
 # ────────────────────────────────────────────────────────────────────────────────
@@ -219,7 +219,7 @@ if ($runAnalytics -match '^[Yy]') {
 
     Clear-Host
     Write-Host "Deep Analytics Mode" -ForegroundColor Cyan
-    Write-Host "Exit logging by pressing Ctrl+C`n" -ForegroundColor Gray
+    Write-Host "Exit logging by pressing any key`n" -ForegroundColor Gray
 
     $startTime = Get-Date
     $allEvents = @()  # Full log (all PnP events)
@@ -231,7 +231,7 @@ if ($runAnalytics -match '^[Yy]') {
             $elapsedStr = "{0:hh\:mm\:ss\.fff}" -f $elapsed
 
             # Update elapsed time in place
-            Write-Host "`rElapsed time (5s refresh): $elapsedStr" -NoNewline -ForegroundColor Green
+            Write-Host "`rElapsed time: $elapsedStr" -NoNewline -ForegroundColor Green
 
             # Fetch recent PnP events (broad, all)
             $recent = Get-WinEvent -FilterHashtable @{
@@ -263,12 +263,18 @@ if ($runAnalytics -match '^[Yy]') {
                 Write-Host "$time : $msg" -ForegroundColor White
             }
 
+            # Check for any keypress to stop
+            if ($Host.UI.RawUI.KeyAvailable) {
+                $key = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+                break
+            }
+
             Start-Sleep -Seconds 5
         }
     }
     catch {
         Clear-Host
-        Write-Host "Analytics stopped (Ctrl+C detected)." -ForegroundColor Yellow
+        Write-Host "Analytics stopped." -ForegroundColor Yellow
     }
 
     # ────────────────────────────────────────────────────────────────────────────────
