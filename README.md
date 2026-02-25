@@ -70,11 +70,10 @@ Questions / feature requests → open issue.
 # Script structure
 ```
 Repository: klangche/usb-script
-├── lk-usb-tree-windows.ps1           # Powershell launcher
-├── usb-tree-powershell.ps1           # Windows script
-├── lk-usb-tree-linux.sh              # Linux script
-├── lk-usb-tree-macos.sh              # macOS script 
-└── usb-tree-config.json              # Central configuration
+├── proav-shoko.ps1                  # Powershell launcher
+├── proav-shoko_powershell.ps1       # Windows script
+├── proav-shoko.sh                   # macOS script 
+└── roav-shoko.json                  # Central configuration
 ```
 
 ###Sample output
@@ -93,7 +92,7 @@ This is a realistic example output from a Windows laptop in a typical AV BYOD tr
 
 ```powershell
 ==============================================================================
-USB TREE DIAGNOSTIC TOOL - WINDOWS EDITION
+Shōko tool - WINDOWS EDITION
 ==============================================================================
 Platform: Windows 11 Pro 23H2 (Build 22631.4169)
 
