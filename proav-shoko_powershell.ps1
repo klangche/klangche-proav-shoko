@@ -1,8 +1,9 @@
-# proav-shoko_powershell.ps1 - Shōko Main Logic (full flow: USB + Display trees always, combined report, real analytics loop)
+# proav-shoko_powershell.ps1 - Shōko Main Logic
+# USB tree + display tree always shown consecutively, combined report, real analytics loop with elapsed time & event list
 
 $ErrorActionPreference = 'Stop'
 
-# Load config from your current repo
+# Load config
 try {
     $Config = Invoke-RestMethod "https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.json"
     $Version = $Config.version
@@ -30,7 +31,7 @@ $outHtml = "$env:TEMP\shoko-report-$dateStamp.html"
 $htmlContent = "<html><body style='background:#000;color:#0f0;font-family:Consolas;'><pre>Shōko Report - $dateStamp`n`n"
 
 # ────────────────────────────────────────────────────────────────────────────────
-# USB TREE – always shown first
+# USB TREE – always shown
 # ────────────────────────────────────────────────────────────────────────────────
 
 Write-Host "Enumerating USB devices..." -ForegroundColor Gray
@@ -184,7 +185,7 @@ if ($monitors -and $monitors.Count -gt 0) {
 }
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Save combined report (USB + Display + score) & ask browser
+# Save combined report & ask browser
 # ────────────────────────────────────────────────────────────────────────────────
 
 $htmlContent += "</pre></body></html>"
@@ -206,10 +207,10 @@ if ($openBrowser -match '^[Yy]') {
 
 $runAnalytics = Read-Host "Run deep analytics (USB + Display events, Ctrl+C to stop)? (y/n)"
 if ($runAnalytics -match '^[Yy]' -and $isAdmin) {
-    Write-Host "Deep analytics mode started (USB + Display). Press Ctrl+C to exit." -ForegroundColor Green
+    Write-Host "Deep analytics mode started. Press Ctrl+C to exit." -ForegroundColor Green
 
     $startTime = Get-Date
-    $eventLog = @()
+    $eventLog = @()   # Track seen event IDs to avoid duplicates
 
     try {
         while ($true) {
@@ -218,23 +219,26 @@ if ($runAnalytics -match '^[Yy]' -and $isAdmin) {
 
             Write-Host "`n[$elapsedStr] Monitoring USB & Display events..." -ForegroundColor Green
 
-            $recent = Get-WinEvent -FilterHashtable @{
+            # Fetch recent PnP events (USB + Display related)
+            $recentEvents = Get-WinEvent -FilterHashtable @{
                 LogName = 'Microsoft-Windows-Kernel-PnP/Configuration'
-                StartTime = (Get-Date).AddMinutes(-5)
-            } -MaxEvents 50 -EA SilentlyContinue |
-                Where-Object { $_.Message -match "(?i)(usb|hub|display|monitor|connect|disconnect|hotplug|EDID|error|fail|reset)" }
+                StartTime = (Get-Date).AddMinutes(-10)   # last 10 min
+            } -MaxEvents 100 -EA SilentlyContinue |
+                Where-Object { $_.Message -match "(?i)(usb|hub|display|monitor|connect|disconnect|hotplug|EDID|error|fail|reset|fault)" }
 
-            if ($recent -and $recent.Count -gt 0) {
-                Write-Host "  Found $($recent.Count) relevant events in last 5 min:" -ForegroundColor Yellow
-                $newEvents = $recent | Where-Object { $eventLog -notcontains $_.Id }
+            if ($recentEvents -and $recentEvents.Count -gt 0) {
+                Write-Host "  Found $($recentEvents.Count) relevant events in last 10 min:" -ForegroundColor Yellow
+
+                $newEvents = $recentEvents | Where-Object { $eventLog -notcontains $_.Id }
                 foreach ($ev in $newEvents) {
                     $time = $ev.TimeCreated.ToString("HH:mm:ss")
-                    $msg = $ev.Message.Trim().Substring(0, [Math]::Min(80, $ev.Message.Length))
+                    $msg = $ev.Message.Trim()
+                    if ($msg.Length -gt 120) { $msg = $msg.Substring(0, 120) + "..." }
                     Write-Host "  $time - $msg" -ForegroundColor Yellow
                     $eventLog += $ev.Id
                 }
             } else {
-                Write-Host "  No new relevant events in last 5 min" -ForegroundColor Green
+                Write-Host "  No new relevant events in last 10 min" -ForegroundColor Green
             }
 
             Start-Sleep -Seconds 10
@@ -247,9 +251,9 @@ if ($runAnalytics -match '^[Yy]' -and $isAdmin) {
         Write-Host "Analytics error: $($_.Exception.Message)" -ForegroundColor Red
     }
 
-    # After Ctrl+C → back to main view + re-ask browser
+    # After exit → back to main view + re-ask browser
     Write-Host "`nReturning to main view..." -ForegroundColor Gray
-    Write-Host "Previous data still available in report: $outHtml" -ForegroundColor Cyan
+    Write-Host "Previous data (USB tree + Display tree + Score) still available in report: $outHtml" -ForegroundColor Cyan
 
     $reOpen = Read-Host "Re-open HTML report in browser? (y/n)"
     if ($reOpen -match '^[Yy]') {
