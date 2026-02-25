@@ -1,5 +1,5 @@
 # proav-shoko_powershell.ps1 - Shōko Main Logic
-# Flow: USB + Display trees always, browser prompt with 'a' shortcut, analytics scrolling log, return to original trees on Ctrl+C
+# Clean analytics view, full background logging, high-impact live, Ctrl+C returns to trees
 
 $ErrorActionPreference = 'Stop'
 
@@ -209,64 +209,71 @@ if ($browserChoice -match '^[Yy]') {
 }
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Deep Analytics – scrolling log, elapsed time, event list
+# Deep Analytics – clean cleared view, scrolling events, full background logging
 # ────────────────────────────────────────────────────────────────────────────────
 
 if ($runAnalytics -match '^[Yy]') {
     if (-not $isAdmin) {
-        Write-Host "Warning: Running in basic mode – some events may not be visible" -ForegroundColor Yellow
+        Write-Host "Warning: Basic mode – some events may not be visible" -ForegroundColor Yellow
     }
-    Write-Host "Deep analytics mode started. Press Ctrl+C to exit." -ForegroundColor Green
+
+    Clear-Host
+    Write-Host "Deep Analytics Mode" -ForegroundColor Cyan
+    Write-Host "Exit with Ctrl+C`n" -ForegroundColor Gray
 
     $startTime = Get-Date
-    $eventLog = @()  # Track seen event IDs to avoid duplicates
+    $allEvents = @()   # Full log (all PnP events)
+    $highImpactEvents = @()  # For live display
 
     try {
         while ($true) {
             $elapsed = (Get-Date) - $startTime
             $elapsedStr = "{0:hh\:mm\:ss}" -f $elapsed
 
-            Write-Host "`n[$elapsedStr] Monitoring USB & Display events..." -ForegroundColor Green
+            # Update elapsed time in place
+            Write-Host "`rElapsed time: $elapsedStr" -NoNewline -ForegroundColor Green
 
-            $recentEvents = Get-WinEvent -FilterHashtable @{
+            # Fetch all recent PnP events (full background logging)
+            $recent = Get-WinEvent -FilterHashtable @{
                 LogName = 'Microsoft-Windows-Kernel-PnP/Configuration'
-                StartTime = (Get-Date).AddMinutes(-10)
-            } -MaxEvents 100 -EA SilentlyContinue |
-                Where-Object { $_.Message -match "(?i)(usb|hub|display|monitor|connect|disconnect|hotplug|EDID|error|fail|reset)" }
+                StartTime = (Get-Date).AddMinutes(-5)
+            } -MaxEvents 200 -EA SilentlyContinue
 
-            if ($recentEvents -and $recentEvents.Count -gt 0) {
-                Write-Host "  Found $($recentEvents.Count) relevant events:" -ForegroundColor Yellow
-                $newEvents = $recentEvents | Where-Object { $eventLog -notcontains $_.Id }
-                foreach ($ev in $newEvents) {
+            $newEvents = $recent | Where-Object { $allEvents -notcontains $_.Id }
+            $allEvents += $newEvents.Id
+
+            # Filter high-impact for live display
+            $highImpact = $newEvents | Where-Object { $_.Message -match "(?i)(disconnect|hotplug|error|fail|reset|fault|overcurrent|timeout|CRC|EDID|recovery)" }
+
+            if ($highImpact -and $highImpact.Count -gt 0) {
+                $highImpactEvents += $highImpact
+                foreach ($ev in $highImpact) {
                     $time = $ev.TimeCreated.ToString("HH:mm:ss")
                     $msg = $ev.Message.Trim()
                     if ($msg.Length -gt 100) { $msg = $msg.Substring(0, 100) + "..." }
-                    Write-Host "  $time - $msg" -ForegroundColor Yellow
-                    $eventLog += $ev.Id
+                    Write-Host "`n$time - $msg" -ForegroundColor Yellow
                 }
-            } else {
-                Write-Host "  No new relevant events in last 10 min" -ForegroundColor Green
             }
 
-            Start-Sleep -Seconds 10
+            Start-Sleep -Seconds 5
         }
     }
     catch {
-        Write-Host "`nCtrl+C detected. Exiting analytics mode." -ForegroundColor Yellow
+        Clear-Host
+        Write-Host "Analytics stopped (Ctrl+C detected)." -ForegroundColor Yellow
     }
 
     # ────────────────────────────────────────────────────────────────────────────────
-    # Return to full view – re-show original trees + summary
+    # Return to full view – original trees + summary
     # ────────────────────────────────────────────────────────────────────────────────
 
-    Write-Host "`nReturning to full view..." -ForegroundColor Gray
+    Clear-Host
+    Write-Host "Returning to full view..." -ForegroundColor Gray
 
     Write-Host ""
     Write-Host "USB TREE (original state)" -ForegroundColor Cyan
     Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host $treeOutput
-    Write-Host ""
-    Write-Host "Max hops: $maxHops | Tiers: $numTiers | Devices: $($devices.Count) | Hubs: $($hubs.Count)" -ForegroundColor Gray
 
     Write-Host ""
     Write-Host "DISPLAY TREE & ANALYTICS (original)" -ForegroundColor Magenta
@@ -274,7 +281,7 @@ if ($runAnalytics -match '^[Yy]') {
     Write-Host $displayTreeOutput
 
     Write-Host ""
-    Write-Host "Analytics summary: Total events logged: $($eventLog.Count)" -ForegroundColor Green
+    Write-Host "Analytics summary: Total PnP events logged: $($allEvents.Count) | High-impact events: $($highImpactEvents.Count)" -ForegroundColor Green
 
     $reOpen = Read-Host "Open HTML report in browser? (y/n)"
     if ($reOpen -match '^[Yy]') {
