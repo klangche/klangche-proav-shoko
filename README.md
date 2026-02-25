@@ -3,7 +3,7 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 
-# Linus USB Tree Diagnostic Tool
+# Klangche proav-shoko
 A simple tool to visualize USB tree structure (tiers, hops, hubs) and assess stability across Windows, macOS, and Linux.
 
 
@@ -12,15 +12,13 @@ Windows:
 irm https://raw.githubusercontent.com/klangche/usb-script/main/lk-usb-tree-windows.ps1 | iex
 ```
 
-OSX
+OSX 
 ```Terminal
 curl -sSL https://raw.githubusercontent.com/klangche/usb-script/main/lk-usb-tree-osx.sh | bash
 ```
 
-Linux
-```Terminal
-curl -sSL https://raw.githubusercontent.com/yourname/usb-script/main/lk-lusb-tree-linux.sh | bash
-```
+
+
 ## HOW TO USE THE TOOL
 1. Copy and Paste above command into **PowerShell** or **Terminal**
 2. Run in admin och basic*
