@@ -1,74 +1,65 @@
-# =============================================================================
-# USB TREE DIAGNOSTIC TOOL - Universal Launcher
-# =============================================================================
-# Detects OS and runs appropriate version
-# Usage: irm https://raw.githubusercontent.com/klangche/usb-script/main/lk-usb-tree-windows.ps1 | iex
-# =============================================================================
+# proav-shoko_powershell.ps1 - Shōko Main Logic (USB + Display Diagnostics)
+
+$RepoOwner = "klangche"
+$RepoName   = "klangche-proav-shoko"
+$Branch     = "main"
+$BaseUrl    = "https://raw.githubusercontent.com/$RepoOwner/$RepoName/$Branch"
+
+# Load config (now from current repo)
+try {
+    $Config = Invoke-RestMethod -Uri "$BaseUrl/proav-shoko.json" -UseBasicParsing
+    Write-Host "Config loaded (v$($Config.version))" -ForegroundColor Green
+} catch {
+    Write-Host "Config load failed - using defaults" -ForegroundColor Yellow
+    $Config = [PSCustomObject]@{ version = "fallback" }
+}
+
+# Color helper using config if available
+function Get-Color { param($Name)
+    $map = @{ cyan = "Cyan"; magenta = "Magenta"; yellow = "Yellow"; green = "Green"; gray = "Gray" }
+    return $map[$Name] ?? "White"
+}
 
 Write-Host "==============================================================================" -ForegroundColor Cyan
-Write-Host "USB TREE DIAGNOSTIC TOOL - Universal Launcher" -ForegroundColor Cyan
+Write-Host "Shōko - USB + Display Diagnostic Tool v$($Config.version)" -ForegroundColor Cyan
 Write-Host "==============================================================================" -ForegroundColor Cyan
-Write-Host "Platform: $([System.Environment]::OSVersion.VersionString)" -ForegroundColor Gray
-Write-Host "Detecting operating system..." -ForegroundColor Gray
-Write-Host ""
 
-# Detect OS
-$isWindows = $env:OS -match "Windows"
-$hasBash = Get-Command bash -ErrorAction SilentlyContinue
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
-if ($isWindows) {
-    Write-Host "✓ Windows detected - using PowerShell version" -ForegroundColor Green
-    Write-Host ""
-    Write-Host "Downloading main Windows script..." -ForegroundColor Gray
-    
-    try {
-        $mainScript = Invoke-RestMethod -Uri "https://raw.githubusercontent.com/klangche/usb-script/main/usb-tree-powershell.ps1"
-        Invoke-Expression $mainScript
-    } catch {
-        Write-Host "Failed to download Windows script: $_" -ForegroundColor Red
-        Write-Host "Please check your internet connection and try again." -ForegroundColor Yellow
-        Read-Host "Press Enter to exit"
-    }
+if (-not $isAdmin) {
+    Write-Host "Running in basic mode (limited features)" -ForegroundColor Yellow
 }
-elseif ($hasBash) {
-    Write-Host "✓ Unix-like system with bash detected - using bash version" -ForegroundColor Green
-    Write-Host ""
-    Write-Host "Downloading and running appropriate script..." -ForegroundColor Gray
-    
-    if (Get-Command curl -ErrorAction SilentlyContinue) {
-        # Try macOS script first, fall back to Linux
-        $result = bash -c "curl -sSL https://raw.githubusercontent.com/klangche/usb-script/main/lk-usb-tree-macos.sh 2>/dev/null | bash 2>/dev/null"
-        if ($LASTEXITCODE -ne 0) {
-            bash -c "curl -sSL https://raw.githubusercontent.com/klangche/usb-script/main/lk-usb-tree-linux.sh | bash"
-        }
-    } else {
-        try {
-            $bashScript = Invoke-RestMethod -Uri "https://raw.githubusercontent.com/klangche/usb-script/main/lk-usb-tree-macos.sh"
-            $bashScript | bash 2>$null
-            if ($LASTEXITCODE -ne 0) {
-                $bashScript = Invoke-RestMethod -Uri "https://raw.githubusercontent.com/klangche/usb-script/main/lk-usb-tree-linux.sh"
-                $bashScript | bash
-            }
-        } catch {
-            Write-Host "Failed to download bash script: $_" -ForegroundColor Red
-        }
-    }
-}
-else {
-    Write-Host "⚠ Unknown platform - running basic mode" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "Basic USB device information:" -ForegroundColor Cyan
-    
-    try {
-        Get-PnpDevice -Class USB | Where-Object {$_.Status -eq 'OK'} | 
-        Select-Object FriendlyName, Class, Status | 
-        Format-Table -AutoSize
-    } catch {
-        Write-Host "Unable to enumerate USB devices." -ForegroundColor Red
+
+# ────────────────────────────────────────────────────────────────────────────────
+# USB TREE SECTION (your original logic – update any old URLs here if present)
+# ────────────────────────────────────────────────────────────────────────────────
+# ... Paste / keep your existing USB enumeration, tree building, stability calc, output code here ...
+# Make sure any Invoke-RestMethod or download lines use $BaseUrl above instead of old repo paths.
+
+# Example stability summary print (adapt to your code)
+Write-Host "USB Stability Verdict" -ForegroundColor Magenta
+# ... your verdict output ...
+
+# ────────────────────────────────────────────────────────────────────────────────
+# DISPLAY TREE & ANALYTICS (integrated)
+# ────────────────────────────────────────────────────────────────────────────────
+
+$showDisplay = Read-Host "`nShow display information and analytics? (y/n)"
+if ($showDisplay -match '^[Yy]') {
+    function Get-DisplayTree {
+        # ... Paste the full Get-DisplayTree function from our previous response here ...
+        # (the one with Decode-Connection, Detect-Transport, event logs, health hints, etc.)
+        # It uses no external downloads, so no URL fixes needed inside.
     }
     
-    Write-Host ""
-    Write-Host "For full features, please run on Windows with PowerShell or" -ForegroundColor Gray
-    Write-Host "Linux/macOS with bash installed." -ForegroundColor Gray
-    Read-Host "Press Enter to exit"
+    Get-DisplayTree
 }
+
+# ────────────────────────────────────────────────────────────────────────────────
+# DEEP ANALYTICS / MONITORING LOOP (your original – keep as is)
+# ────────────────────────────────────────────────────────────────────────────────
+
+# ... your existing deep USB analytics prompt + infinite loop until Ctrl+C ...
+
+Write-Host "`nShōko complete. Press Enter to exit." -ForegroundColor Green
+Read-Host
