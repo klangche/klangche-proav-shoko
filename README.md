@@ -9,12 +9,12 @@ A simple tool to visualize USB tree structure (tiers, hops, hubs) and assess sta
 
 Windows:
 ```powershell
-irm https://raw.githubusercontent.com/klangche/usb-script/main/lk-usb-tree-windows.ps1 | iex
+irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1 | iex
 ```
 
 OSX 
 ```Terminal
-curl -sSL https://raw.githubusercontent.com/klangche/usb-script/main/lk-usb-tree-osx.sh | bash
+curl -sSL https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.sh | bash
 ```
 
 
