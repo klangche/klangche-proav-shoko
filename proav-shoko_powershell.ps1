@@ -1,5 +1,5 @@
 # proav-shoko_powershell.ps1 - Shōko Main Logic
-# Clean analytics view: cleared, elapsed with ms, divider, all events appended live
+# Clean analytics view: cleared, elapsed time with ms, divider, all events appended live
 
 $ErrorActionPreference = 'Stop'
 
@@ -209,7 +209,7 @@ if ($browserChoice -match '^[Yy]') {
 }
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Deep Analytics – clean cleared view, all events logged live
+# Deep Analytics – clean cleared view, elapsed time with ms, divider, all events appended
 # ────────────────────────────────────────────────────────────────────────────────
 
 if ($runAnalytics -match '^[Yy]') {
@@ -223,20 +223,15 @@ if ($runAnalytics -match '^[Yy]') {
 
     $startTime = Get-Date
     $allEvents = @()  # Full log (all PnP events)
-
-    # Log start event
-    $startTimeStr = $startTime.ToString("HH:mm:ss.fff")
-    Write-Host "$startTimeStr - Logging started" -ForegroundColor Green
-
-    $lastElapsedStr = ""
+    $startLogged = $false
 
     try {
         while ($true) {
             $elapsed = (Get-Date) - $startTime
             $elapsedStr = "{0:hh\:mm\:ss\.fff}" -f $elapsed
 
-            # Update elapsed time in place (overwrite line)
-            Write-Host "`rElapsed time: $elapsedStr" -NoNewline -ForegroundColor Green
+            # Update elapsed time in place
+            Write-Host "`rElapsed time (5s refresh): $elapsedStr" -NoNewline -ForegroundColor Green
 
             # Fetch recent PnP events (broad, all)
             $recent = Get-WinEvent -FilterHashtable @{
@@ -247,11 +242,25 @@ if ($runAnalytics -match '^[Yy]') {
             $newEvents = $recent | Where-Object { $allEvents -notcontains $_.Id }
             $allEvents += $newEvents.Id
 
+            # Log start event once
+            if (-not $startLogged) {
+                $startTimeStr = $startTime.ToString("HH:mm:ss.fff")
+                Write-Host "`n$startTimeStr - Logging started" -ForegroundColor Green
+                $startLogged = $true
+            }
+
+            # Divider (printed once after start)
+            if (-not $dividerPrinted) {
+                Write-Host "───────────────────────────────────────────────────────────────" -ForegroundColor Gray
+                $dividerPrinted = $true
+            }
+
+            # Append all new events
             foreach ($ev in $newEvents) {
                 $time = $ev.TimeCreated.ToString("HH:mm:ss.fff")
                 $msg = $ev.Message.Trim()
                 if ($msg.Length -gt 120) { $msg = $msg.Substring(0, 120) + "..." }
-                Write-Host "`n$time - $msg" -ForegroundColor White
+                Write-Host "$time : $msg" -ForegroundColor White
             }
 
             Start-Sleep -Seconds 5
