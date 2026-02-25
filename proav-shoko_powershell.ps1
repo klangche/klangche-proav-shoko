@@ -1,5 +1,5 @@
 # proav-shoko_powershell.ps1 - Shōko Main Logic
-# Trees + ratings shown first, analytics under them after stop, deductions applied
+# Trees + ratings shown first, analytics log under them after stop, deductions applied
 
 $ErrorActionPreference = 'Stop'
 
@@ -209,7 +209,7 @@ if ($browserChoice -match '^[Yy]') {
 }
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Deep Analytics – clean cleared view, elapsed time with ms, divider, all events appended
+# Deep Analytics – clean cleared view, elapsed time with ms in header, divider, all events appended
 # ────────────────────────────────────────────────────────────────────────────────
 
 if ($runAnalytics -match '^[Yy]') {
@@ -240,7 +240,7 @@ if ($runAnalytics -match '^[Yy]') {
             $elapsed = (Get-Date) - $startTime
             $elapsedStr = "{0:hh\:mm\:ss\.fff}" -f $elapsed
 
-            # Update duration in place
+            # Update duration in place (header only)
             Write-Host "`rDuration: $elapsedStr" -NoNewline -ForegroundColor Green
 
             # Fetch recent PnP events (broad capture)
