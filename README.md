@@ -18,15 +18,10 @@ Windows:
 irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1 | iex
 ```
 
-OSX 
-```Terminal
-curl -sSL https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.sh | bash
-```
-
 
 
 ## HOW TO USE THE TOOL
-1. Copy and Paste above command into **PowerShell** or **Terminal**
+1. Copy and Paste above command into **PowerShell** 
 2. Run in admin och basic*
 3. view result
 4. view result in browser (copy-paste ready)
