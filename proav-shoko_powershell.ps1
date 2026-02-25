@@ -1,5 +1,5 @@
 # proav-shoko_powershell.ps1 - Shōko Main Logic
-# Flow: Trees always shown, browser prompt with 'a', analytics with clean view + counters + deductions, any key to stop
+# Trees + ratings shown first, analytics under them after stop, deductions applied
 
 $ErrorActionPreference = 'Stop'
 
@@ -227,8 +227,6 @@ if ($runAnalytics -match '^[Yy]') {
     $randomErrors = 0
     $displayHotplugs = 0
     $displayEdidIssues = 0
-    $lastStatus = "STABLE"
-    $triggerReason = ""
 
     Write-Host "`nDuration: 00:00:00.000`n" -ForegroundColor Green
     Write-Host "───────────────────────────────────────────────────────────────" -ForegroundColor Gray
@@ -236,6 +234,7 @@ if ($runAnalytics -match '^[Yy]') {
     $startTimeStr = $startTime.ToString("HH:mm:ss.fff")
     Write-Host "$startTimeStr - Logging started" -ForegroundColor Green
 
+    $previousEvent = ""
     try {
         while ($true) {
             $elapsed = (Get-Date) - $startTime
@@ -258,7 +257,7 @@ if ($runAnalytics -match '^[Yy]') {
                 $msg = $ev.Message.Trim()
                 if ($msg.Length -gt 120) { $msg = $msg.Substring(0, 120) + "..." }
 
-                # Classify and count
+                # Classify for counters
                 $eventType = "INFO"
                 if ($msg -match "(?i)disconnect|remove|power down") { $eventType = "DISCONNECT" }
                 if ($msg -match "(?i)connect|arrival") { $eventType = "CONNECT" }
@@ -271,14 +270,6 @@ if ($runAnalytics -match '^[Yy]') {
 
                 $previousEvent = $eventType
             }
-
-            # Update STATUS
-            if ($usbRehandshakes -gt 2 -or $randomErrors -gt 1) {
-                $lastStatus = "UNSTABLE"
-                $triggerReason = "triggered by USB re-handshakes or random errors"
-            }
-
-            Write-Host "`rSTATUS: $lastStatus $triggerReason" -NoNewline -ForegroundColor $(if ($lastStatus -eq "UNSTABLE") { "Red" } else { "Green" })
 
             # Check for any keypress to stop
             if ($Host.UI.RawUI.KeyAvailable) {
@@ -295,7 +286,7 @@ if ($runAnalytics -match '^[Yy]') {
     }
 
     # ────────────────────────────────────────────────────────────────────────────────
-    # Return to full view – original trees + analytics summary + deductions
+    # Return to full view – original data + analytics summary + deductions under it
     # ────────────────────────────────────────────────────────────────────────────────
 
     Clear-Host
@@ -317,12 +308,14 @@ if ($runAnalytics -match '^[Yy]') {
     Write-Host ""
     Write-Host "HOST SUMMARY (original): STABLE (Score: $baseStabilityScore/10)" -ForegroundColor Green
 
+    # Analytics summary under everything
     $totalEvents = $allEvents.Count
     $deduction = $usbRehandshakes * 1 + $randomErrors * 2 + $displayHotplugs * 1 + $displayEdidIssues * 1
     $finalScore = [Math]::Max(0, $baseStabilityScore - $deduction)
 
     Write-Host ""
-    Write-Host "Analytics summary (during monitoring):" -ForegroundColor Cyan
+    Write-Host "==============================================================================" -ForegroundColor Cyan
+    Write-Host "Analytics Summary (during monitoring):" -ForegroundColor Cyan
     Write-Host "Total events logged: $totalEvents"
     Write-Host "USB RE-HANDSHAKES: $usbRehandshakes"
     Write-Host "RANDOM ERRORS: $randomErrors"
