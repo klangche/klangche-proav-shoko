@@ -1,5 +1,5 @@
 # proav-shoko_powershell.ps1 - Shōko Main Logic
-# Clean analytics view, any keypress to stop, elapsed ms, divider, all events
+# Flow: Trees always shown, browser prompt with 'a', analytics with clean view + counters + deductions, any key to stop
 
 $ErrorActionPreference = 'Stop'
 
@@ -218,22 +218,33 @@ if ($runAnalytics -match '^[Yy]') {
     }
 
     Clear-Host
-    Write-Host "Deep Analytics Mode" -ForegroundColor Cyan
-    Write-Host "Exit logging by pressing any key`n" -ForegroundColor Gray
+    Write-Host "DEEP ANALYTICS - USB + Display Event Monitoring" -ForegroundColor Cyan
+    Write-Host "Monitoring connections... Press any key to stop" -ForegroundColor Gray
 
     $startTime = Get-Date
     $allEvents = @()  # Full log (all PnP events)
-    $startLogged = $false
+    $usbRehandshakes = 0
+    $randomErrors = 0
+    $displayHotplugs = 0
+    $displayEdidIssues = 0
+    $lastStatus = "STABLE"
+    $triggerReason = ""
+
+    Write-Host "`nDuration: 00:00:00.000`n" -ForegroundColor Green
+    Write-Host "───────────────────────────────────────────────────────────────" -ForegroundColor Gray
+
+    $startTimeStr = $startTime.ToString("HH:mm:ss.fff")
+    Write-Host "$startTimeStr - Logging started" -ForegroundColor Green
 
     try {
         while ($true) {
             $elapsed = (Get-Date) - $startTime
             $elapsedStr = "{0:hh\:mm\:ss\.fff}" -f $elapsed
 
-            # Update elapsed time in place
-            Write-Host "`rElapsed time: $elapsedStr" -NoNewline -ForegroundColor Green
+            # Update duration in place
+            Write-Host "`rDuration: $elapsedStr" -NoNewline -ForegroundColor Green
 
-            # Fetch recent PnP events (broad, all)
+            # Fetch recent PnP events (broad capture)
             $recent = Get-WinEvent -FilterHashtable @{
                 LogName = 'Microsoft-Windows-Kernel-PnP/Configuration'
                 StartTime = (Get-Date).AddMinutes(-10)
@@ -242,26 +253,32 @@ if ($runAnalytics -match '^[Yy]') {
             $newEvents = $recent | Where-Object { $allEvents -notcontains $_.Id }
             $allEvents += $newEvents.Id
 
-            # Log start event once
-            if (-not $startLogged) {
-                $startTimeStr = $startTime.ToString("HH:mm:ss.fff")
-                Write-Host "`n$startTimeStr - Logging started" -ForegroundColor Green
-                $startLogged = $true
-            }
-
-            # Divider (printed once after start)
-            if (-not $dividerPrinted) {
-                Write-Host "───────────────────────────────────────────────────────────────" -ForegroundColor Gray
-                $dividerPrinted = $true
-            }
-
-            # Append all new events
             foreach ($ev in $newEvents) {
                 $time = $ev.TimeCreated.ToString("HH:mm:ss.fff")
                 $msg = $ev.Message.Trim()
                 if ($msg.Length -gt 120) { $msg = $msg.Substring(0, 120) + "..." }
-                Write-Host "$time : $msg" -ForegroundColor White
+
+                # Classify and count
+                $eventType = "INFO"
+                if ($msg -match "(?i)disconnect|remove|power down") { $eventType = "DISCONNECT" }
+                if ($msg -match "(?i)connect|arrival") { $eventType = "CONNECT" }
+                if ($msg -match "(?i)hotplug") { $eventType = "HOTPLUG"; $displayHotplugs++ }
+                if ($msg -match "(?i)edid") { $eventType = "EDID"; if ($msg -match "(?i)fail|error") { $displayEdidIssues++ } }
+                if ($msg -match "(?i)error|fail|fault|timeout|crc|reset|recovery") { $eventType = "ERROR"; $randomErrors++ }
+                if ($eventType -eq "CONNECT" -and $previousEvent -eq "DISCONNECT") { $usbRehandshakes++; $eventType = "RE-HANDSHAKE" }
+
+                Write-Host "$time - [$eventType] $msg" -ForegroundColor White
+
+                $previousEvent = $eventType
             }
+
+            # Update STATUS
+            if ($usbRehandshakes -gt 2 -or $randomErrors -gt 1) {
+                $lastStatus = "UNSTABLE"
+                $triggerReason = "triggered by USB re-handshakes or random errors"
+            }
+
+            Write-Host "`rSTATUS: $lastStatus $triggerReason" -NoNewline -ForegroundColor $(if ($lastStatus -eq "UNSTABLE") { "Red" } else { "Green" })
 
             # Check for any keypress to stop
             if ($Host.UI.RawUI.KeyAvailable) {
@@ -278,7 +295,7 @@ if ($runAnalytics -match '^[Yy]') {
     }
 
     # ────────────────────────────────────────────────────────────────────────────────
-    # Return to full view – original trees + summary
+    # Return to full view – original trees + analytics summary + deductions
     # ────────────────────────────────────────────────────────────────────────────────
 
     Clear-Host
@@ -295,7 +312,24 @@ if ($runAnalytics -match '^[Yy]') {
     Write-Host $displayTreeOutput
 
     Write-Host ""
-    Write-Host "Analytics summary: Total events logged: $($allEvents.Count)" -ForegroundColor Green
+    Write-Host "STABILITY PER PLATFORM (original)" -ForegroundColor Cyan
+    Write-Host $statusSummary
+    Write-Host ""
+    Write-Host "HOST SUMMARY (original): STABLE (Score: $baseStabilityScore/10)" -ForegroundColor Green
+
+    $totalEvents = $allEvents.Count
+    $deduction = $usbRehandshakes * 1 + $randomErrors * 2 + $displayHotplugs * 1 + $displayEdidIssues * 1
+    $finalScore = [Math]::Max(0, $baseStabilityScore - $deduction)
+
+    Write-Host ""
+    Write-Host "Analytics summary (during monitoring):" -ForegroundColor Cyan
+    Write-Host "Total events logged: $totalEvents"
+    Write-Host "USB RE-HANDSHAKES: $usbRehandshakes"
+    Write-Host "RANDOM ERRORS: $randomErrors"
+    Write-Host "DISPLAY HOTPLUGS: $displayHotplugs"
+    Write-Host "DISPLAY EDID ISSUES: $displayEdidIssues"
+    Write-Host "Points deducted: -$deduction (for events)"
+    Write-Host "Adjusted score: $finalScore/10" -ForegroundColor $(if ($finalScore -lt 5) { "Red" } elseif ($finalScore -lt 7) { "Yellow" } else { "Green" })
 
     $reOpen = Read-Host "Open HTML report in browser? (y/n)"
     if ($reOpen -match '^[Yy]') {
