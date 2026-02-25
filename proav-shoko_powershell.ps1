@@ -1,5 +1,5 @@
 # proav-shoko_powershell.ps1 - Shōko Main Logic
-# Trees + ratings shown first, analytics log under them after stop, deductions applied
+# Trees + ratings first, analytics log under them after stop, timer in header, logging start/end
 
 $ErrorActionPreference = 'Stop'
 
@@ -209,7 +209,7 @@ if ($browserChoice -match '^[Yy]') {
 }
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Deep Analytics – clean cleared view, elapsed time with ms in header, divider, all events appended
+# Deep Analytics – clean view, timer in header, divider, all events appended
 # ────────────────────────────────────────────────────────────────────────────────
 
 if ($runAnalytics -match '^[Yy]') {
@@ -228,6 +228,7 @@ if ($runAnalytics -match '^[Yy]') {
     $displayHotplugs = 0
     $displayEdidIssues = 0
 
+    # Print header with timer placeholder
     Write-Host "`nDuration: 00:00:00.000`n" -ForegroundColor Green
     Write-Host "───────────────────────────────────────────────────────────────" -ForegroundColor Gray
 
@@ -240,10 +241,10 @@ if ($runAnalytics -match '^[Yy]') {
             $elapsed = (Get-Date) - $startTime
             $elapsedStr = "{0:hh\:mm\:ss\.fff}" -f $elapsed
 
-            # Update duration in place (header only)
+            # Update timer in header (overwrite line)
             Write-Host "`rDuration: $elapsedStr" -NoNewline -ForegroundColor Green
 
-            # Fetch recent PnP events (broad capture)
+            # Fetch recent PnP events (broad, all)
             $recent = Get-WinEvent -FilterHashtable @{
                 LogName = 'Microsoft-Windows-Kernel-PnP/Configuration'
                 StartTime = (Get-Date).AddMinutes(-10)
@@ -285,8 +286,14 @@ if ($runAnalytics -match '^[Yy]') {
         Write-Host "Analytics stopped." -ForegroundColor Yellow
     }
 
+    # Log stop event
+    $stopTime = Get-Date
+    $stopTimeStr = $stopTime.ToString("HH:mm:ss.fff")
+    $totalDuration = "{0:hh\:mm\:ss\.fff}" -f ($stopTime - $startTime)
+    Write-Host "$stopTimeStr - Logging ended (total duration: $totalDuration)" -ForegroundColor Green
+
     # ────────────────────────────────────────────────────────────────────────────────
-    # Return to full view – original data + analytics summary + deductions under it
+    # Return to full view – original data + analytics summary under it
     # ────────────────────────────────────────────────────────────────────────────────
 
     Clear-Host
