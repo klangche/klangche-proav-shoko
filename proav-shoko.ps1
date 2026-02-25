@@ -1,87 +1,32 @@
-# proav-shoko.ps1
-# Shōko Launcher – Windows (compatible with PowerShell 5.1 and 7+)
-# One-liner: irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1 | iex
+# proav-shoko.ps1 - Shōko Launcher (works in PowerShell 5.1 and 7+)
 
-$ErrorActionPreference = 'Stop'
-
-$RepoOwner = "klangche"
-$RepoName  = "klangche-proav-shoko"
-$Branch    = "main"
-
-$BaseUrl = "https://raw.githubusercontent.com/$RepoOwner/$RepoName/$Branch"
+$Repo = "klangche/klangche-proav-shoko"
+$Branch = "main"
+$Base = "https://raw.githubusercontent.com/$Repo/$Branch"
 
 Write-Host "==============================================================================" -ForegroundColor Cyan
-Write-Host "Shōko – USB + Display Diagnostic Tool" -ForegroundColor Cyan
+Write-Host "Shōko – USB + Display Diagnostic Tool Launcher" -ForegroundColor Cyan
 Write-Host "==============================================================================" -ForegroundColor Cyan
 Write-Host ""
-
-# Try to find PowerShell 7 first
-$PSExe = $null
-if (Get-Command "pwsh" -ErrorAction SilentlyContinue) {
-    $PSExe = "pwsh.exe"
-    Write-Host "PowerShell 7+ detected – will prefer pwsh.exe" -ForegroundColor Green
-} else {
-    $PSExe = "powershell.exe"
-    Write-Host "Using Windows PowerShell (5.1) – some features may be limited" -ForegroundColor Yellow
-}
 
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 if (-not $isAdmin) {
-    Write-Host ""
-    Write-Host "Limited mode – full USB tree and display analytics require Administrator rights." -ForegroundColor Yellow
-    
-    $choice = Read-Host "Elevate now? (y/n)"
-    if ($choice -match '^[Yy]$') {
-        Write-Host "Requesting elevation..." -ForegroundColor Yellow
-        
-        $tempScript = "$env:TEMP\shoko-elevated.ps1"
-        
-        try {
-            Write-Host "Downloading main script..." -ForegroundColor Gray
-            Invoke-RestMethod -Uri "$BaseUrl/proav-shoko_powershell.ps1" -UseBasicParsing | 
-                Out-File -FilePath $tempScript -Encoding UTF8 -Force
-            
-            Start-Process $PSExe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$tempScript`"" -Verb RunAs
-            Write-Host "Elevation requested. Please allow UAC prompt if shown." -ForegroundColor Green
-        }
-        catch {
-            Write-Host "Failed to download or launch elevated script: $($_.Exception.Message)" -ForegroundColor Red
-            Write-Host "You can manually download and run:" -ForegroundColor Yellow
-            Write-Host "  $BaseUrl/proav-shoko_powershell.ps1" -ForegroundColor Cyan
-        }
-        
+    Write-Host "Limited mode – full features require Administrator rights." -ForegroundColor Yellow
+    $elevate = Read-Host "Elevate now? (y/n)"
+    if ($elevate -match '^[Yy]') {
+        $temp = "$env:TEMP\shoko-elevated.ps1"
+        Invoke-RestMethod "$Base/proav-shoko_powershell.ps1" | Out-File $temp -Encoding UTF8
+        Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$temp`"" -Verb RunAs
         exit
     }
-    else {
-        Write-Host "Continuing in limited mode..." -ForegroundColor Yellow
-    }
 }
-
-# ────────────────────────────────────────────────────────────────
-# Run main logic (either directly or after elevation)
-# ────────────────────────────────────────────────────────────────
-
-Write-Host ""
-Write-Host "Loading Shōko main script..." -ForegroundColor Gray
 
 try {
-    $mainScriptUrl = "$BaseUrl/proav-shoko_powershell.ps1"
-    $scriptContent = Invoke-RestMethod -Uri $mainScriptUrl -UseBasicParsing
-    
-    # Execute the downloaded main script content
-    Invoke-Expression $scriptContent
-}
-catch {
-    Write-Host ""
-    Write-Host "ERROR: Could not load or execute the main script." -ForegroundColor Red
-    Write-Host "Message: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "Please try one of the following:" -ForegroundColor Yellow
-    Write-Host " 1. Run as Administrator manually" -ForegroundColor White
-    Write-Host " 2. Download directly:" -ForegroundColor White
-    Write-Host "    $mainScriptUrl" -ForegroundColor Cyan
-    Write-Host " 3. Check your internet connection / GitHub status" -ForegroundColor White
-    Write-Host ""
+    Write-Host "Loading main script..." -ForegroundColor Gray
+    Invoke-Expression (Invoke-RestMethod "$Base/proav-shoko_powershell.ps1")
+} catch {
+    Write-Host "Failed to load main script: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "Try manually: irm $Base/proav-shoko_powershell.ps1 | iex" -ForegroundColor Yellow
     pause
 }
