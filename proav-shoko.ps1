@@ -5,7 +5,7 @@ $Branch = "main"
 $Base = "https://raw.githubusercontent.com/$Repo/$Branch"
 
 Write-Host "==============================================================================" -ForegroundColor Cyan
-Write-Host "Shōko – USB + Display Diagnostic Tool Launcher" -ForegroundColor Cyan
+Write-Host "Shōko – USB + Display Diagnostic Tool" -ForegroundColor Cyan
 Write-Host "==============================================================================" -ForegroundColor Cyan
 Write-Host ""
 
