@@ -1,5 +1,5 @@
 # proav-shoko_powershell.ps1 - Shōko Main Logic
-# Full original data re-shown after analytics, timer in header, logging start/end, all events
+# Full original data + analytics log under it after stop, deductions, logging start/end
 
 $ErrorActionPreference = 'Stop'
 
@@ -293,7 +293,7 @@ if ($runAnalytics -match '^[Yy]') {
     Write-Host "$stopTimeStr - Logging ended (total duration: $totalDuration)" -ForegroundColor Green
 
     # ────────────────────────────────────────────────────────────────────────────────
-    # Return to full view – original data + analytics summary under it
+    # Return to full view – original data + full analytics log + summary under it
     # ────────────────────────────────────────────────────────────────────────────────
 
     Clear-Host
@@ -315,7 +315,7 @@ if ($runAnalytics -match '^[Yy]') {
     Write-Host ""
     Write-Host "HOST SUMMARY (original): STABLE (Score: $baseStabilityScore/10)" -ForegroundColor Green
 
-    # Analytics summary under everything
+    # Analytics log and summary under everything
     $totalEvents = $allEvents.Count
     $deduction = $usbRehandshakes * 1 + $randomErrors * 2 + $displayHotplugs * 1 + $displayEdidIssues * 1
     $finalScore = [Math]::Max(0, $baseStabilityScore - $deduction)
@@ -330,6 +330,29 @@ if ($runAnalytics -match '^[Yy]') {
     Write-Host "DISPLAY EDID ISSUES: $displayEdidIssues"
     Write-Host "Points deducted: -$deduction (for events)"
     Write-Host "Adjusted score: $finalScore/10" -ForegroundColor $(if ($finalScore -lt 5) { "Red" } elseif ($finalScore -lt 7) { "Yellow" } else { "Green" })
+
+    Write-Host ""
+    Write-Host "==============================================================================" -ForegroundColor Cyan
+    Write-Host "Analytics Log (during monitoring):" -ForegroundColor Cyan
+    Write-Host "$startTimeStr - Logging started"
+    foreach ($evId in $allEvents) {
+        $ev = $recent | Where-Object { $_.Id -eq $evId } | Select-Object -First 1
+        if ($ev) {
+            $time = $ev.TimeCreated.ToString("HH:mm:ss.fff")
+            $msg = $ev.Message.Trim()
+            if ($msg.Length -gt 120) { $msg = $msg.Substring(0, 120) + "..." }
+            $eventType = "INFO"
+            if ($msg -match "(?i)disconnect|remove|power down") { $eventType = "DISCONNECT" }
+            if ($msg -match "(?i)connect|arrival") { $eventType = "CONNECT" }
+            if ($msg -match "(?i)hotplug") { $eventType = "HOTPLUG" }
+            if ($msg -match "(?i)edid") { $eventType = "EDID" }
+            if ($msg -match "(?i)error|fail|fault|timeout|crc|reset|recovery") { $eventType = "ERROR" }
+            if ($eventType -eq "CONNECT" -and $previousEvent -eq "DISCONNECT") { $eventType = "RE-HANDSHAKE" }
+            Write-Host "$time - [$eventType] $msg"
+            $previousEvent = $eventType
+        }
+    }
+    Write-Host "$stopTimeStr - Logging ended (total duration: $totalDuration)"
 
     $reOpen = Read-Host "Open HTML report in browser? (y/n)"
     if ($reOpen -match '^[Yy]') {
