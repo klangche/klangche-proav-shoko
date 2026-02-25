@@ -1,5 +1,5 @@
 # proav-shoko_powershell.ps1 - Shōko Main Logic
-# Full flow: USB + Display trees always shown, "a" shortcut for analytics, live scrolling log, change highlights on return
+# Flow: USB + Display trees always, browser prompt with 'a' shortcut, analytics scrolling log, return to original trees on Ctrl+C
 
 $ErrorActionPreference = 'Stop'
 
@@ -31,7 +31,7 @@ $outHtml = "$env:TEMP\shoko-report-$dateStamp.html"
 $htmlContent = "<html><body style='background:#000;color:#0f0;font-family:Consolas;'><pre>Shōko Report - $dateStamp`n`n"
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Original USB tree (saved for later comparison)
+# USB TREE – always shown
 # ────────────────────────────────────────────────────────────────────────────────
 
 Write-Host "Enumerating USB devices..." -ForegroundColor Gray
@@ -78,20 +78,17 @@ foreach ($id in $map.Keys) {
 $treeOutput = ""
 $maxHops = 0
 
-function Print-Tree { param($id, $level, $prefix, $isLast, $highlightMode = "normal")
+function Print-Tree { param($id, $level, $prefix, $isLast)
     $node = $map[$id]
     if (-not $node) { return }
     $branch = if ($level -eq 0) { "├── " } else { $prefix + $(if ($isLast) { "└── " } else { "├── " }) }
     $name = if ($node.IsHub) { "$($node.Name) [HUB]" } else { $node.Name }
-    $line = "$branch$name ← $level hops"
-    if ($highlightMode -eq "removed") { $line = "[REMOVED] $line" }
-    if ($highlightMode -eq "added") { $line = "[ADDED] $line" }
-    $script:treeOutput += "$line`n"
+    $script:treeOutput += "$branch$name ← $level hops`n"
     $script:maxHops = [Math]::Max($script:maxHops, $level)
     $newPrefix = $prefix + $(if ($isLast) { "    " } else { "│   " })
     $children = $node.Children
     for ($i = 0; $i -lt $children.Count; $i++) {
-        Print-Tree $children[$i] ($level + 1) $newPrefix ($i -eq $children.Count - 1) $highlightMode
+        Print-Tree $children[$i] ($level + 1) $newPrefix ($i -eq $children.Count - 1)
     }
 }
 
@@ -200,6 +197,8 @@ $txtContent | Out-File $outTxt
 Write-Host "Combined report saved (USB + Display + Score): $outTxt / $outHtml" -ForegroundColor Gray
 
 $browserChoice = Read-Host "Open HTML report in browser? (y/n/a)"
+
+$runAnalytics = "n"
 if ($browserChoice -match '^[Yy]') {
     Start-Process $outHtml
     $runAnalytics = Read-Host "Run deep analytics (USB + Display events, Ctrl+C to stop)? (y/n)"
@@ -213,11 +212,14 @@ if ($browserChoice -match '^[Yy]') {
 # Deep Analytics – scrolling log, elapsed time, event list
 # ────────────────────────────────────────────────────────────────────────────────
 
-if ($runAnalytics -match '^[Yy]' -and $isAdmin) {
+if ($runAnalytics -match '^[Yy]') {
+    if (-not $isAdmin) {
+        Write-Host "Warning: Running in basic mode – some events may not be visible" -ForegroundColor Yellow
+    }
     Write-Host "Deep analytics mode started. Press Ctrl+C to exit." -ForegroundColor Green
 
     $startTime = Get-Date
-    $eventLog = @()  # Track seen event IDs
+    $eventLog = @()  # Track seen event IDs to avoid duplicates
 
     try {
         while ($true) {
@@ -254,51 +256,26 @@ if ($runAnalytics -match '^[Yy]' -and $isAdmin) {
     }
 
     # ────────────────────────────────────────────────────────────────────────────────
-    # Return to full view – re-pull & highlight changes
+    # Return to full view – re-show original trees + summary
     # ────────────────────────────────────────────────────────────────────────────────
 
-    Write-Host "`nReturning to full view – re-checking state..." -ForegroundColor Gray
-
-    # Re-pull USB tree (re-use same logic, but compare)
-    # For simplicity, we re-run enumeration and highlight based on original $allDevices vs new
-    $newAllDevices = Get-PnpDevice -Class USB | Where-Object {$_.Status -eq 'OK'}
+    Write-Host "`nReturning to full view..." -ForegroundColor Gray
 
     Write-Host ""
-    Write-Host "USB TREE – Updated" -ForegroundColor Cyan
+    Write-Host "USB TREE (original state)" -ForegroundColor Cyan
     Write-Host "==============================================================================" -ForegroundColor Cyan
-
-    $originalIds = $allDevices.InstanceId
-    $newIds = $newAllDevices.InstanceId
-
-    # Removed
-    $removed = $originalIds | Where-Object { $newIds -notcontains $_ }
-    foreach ($rem in $removed) {
-        $name = ($allDevices | Where-Object { $_.InstanceId -eq $rem }).Name
-        Write-Host "[REMOVED] $name" -ForegroundColor Red
-    }
-
-    # Added
-    $added = $newIds | Where-Object { $originalIds -notcontains $_ }
-    foreach ($add in $added) {
-        $name = ($newAllDevices | Where-Object { $_.InstanceId -eq $add }).Name
-        Write-Host "[ADDED] $name" -ForegroundColor Yellow
-    }
-
-    # Re-print current tree (with highlights if needed – simplified here)
-    $treeOutput = ""  # reset
-    $maxHops = 0
-    foreach ($root in $roots) { Print-Tree $root 0 "" $true }  # re-use original map for now
     Write-Host $treeOutput
-
-    # Display re-check (simplified – add similar [REMOVED]/[ADDED] if needed)
     Write-Host ""
-    Write-Host "DISPLAY TREE – Updated" -ForegroundColor Magenta
-    Get-DisplayTree  # re-call for fresh data
+    Write-Host "Max hops: $maxHops | Tiers: $numTiers | Devices: $($devices.Count) | Hubs: $($hubs.Count)" -ForegroundColor Gray
 
-    # Summary
-    Write-Host "Changes during analytics: $($added.Count) added, $($removed.Count) removed" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "DISPLAY TREE & ANALYTICS (original)" -ForegroundColor Magenta
+    Write-Host "==============================================================================" -ForegroundColor Cyan
+    Write-Host $displayTreeOutput
 
-    # Second browser prompt
+    Write-Host ""
+    Write-Host "Analytics summary: Total events logged: $($eventLog.Count)" -ForegroundColor Green
+
     $reOpen = Read-Host "Open HTML report in browser? (y/n)"
     if ($reOpen -match '^[Yy]') {
         Start-Process $outHtml
