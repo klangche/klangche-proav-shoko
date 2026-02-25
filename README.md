@@ -4,13 +4,11 @@
 
 
 
-# Kangche ProAV Shoko - your professional ProAV detective.
+# Kangche ProAV Shōko - your ProAV detective<br> 証拠 - Shōko - Proof / Evidence / Clarity
 
 - Analyze, verifiy, and **exposes device or connection issues** in meeting rooms and BYOD setups.
 - No excuses. No guessing. Just proof.
 - Inspection / analysis / evidence
-
-Kort, minnesvärt och proffsigt spydigt.
 
 
 Windows:
