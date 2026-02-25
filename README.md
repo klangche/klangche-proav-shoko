@@ -3,8 +3,14 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 
-# Klangche proav-shoko
-A simple tool to visualize USB tree structure (tiers, hops, hubs) and assess stability across Windows, macOS, and Linux.
+
+# Kangche ProAV Shoko - your professional ProAV detective.
+
+- Analyze, verifiy, and **exposes device or connection issues** in meeting rooms and BYOD setups.
+- No excuses. No guessing. Just proof.
+- Inspection / analysis / evidence
+
+Kort, minnesvärt och proffsigt spydigt.
 
 
 Windows:
