@@ -1,5 +1,5 @@
 # proav-shoko_powershell.ps1 - Shōko Main Logic
-# Clean analytics view, full background logging, high-impact live, Ctrl+C returns to trees
+# Clean analytics view: cleared, elapsed with ms, divider, all events appended live
 
 $ErrorActionPreference = 'Stop'
 
@@ -21,7 +21,7 @@ Write-Host "====================================================================
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 if (-not $isAdmin) {
-    Write-Host "Basic mode – full analytics requires admin" -ForegroundColor Yellow
+    Write-Host "Basic mode – some events may not be visible" -ForegroundColor Yellow
 }
 
 $dateStamp = Get-Date -Format "yyyyMMdd-HHmmss"
@@ -209,7 +209,7 @@ if ($browserChoice -match '^[Yy]') {
 }
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Deep Analytics – clean cleared view, scrolling events, full background logging
+# Deep Analytics – clean cleared view, all events logged live
 # ────────────────────────────────────────────────────────────────────────────────
 
 if ($runAnalytics -match '^[Yy]') {
@@ -219,40 +219,39 @@ if ($runAnalytics -match '^[Yy]') {
 
     Clear-Host
     Write-Host "Deep Analytics Mode" -ForegroundColor Cyan
-    Write-Host "Exit with Ctrl+C`n" -ForegroundColor Gray
+    Write-Host "Exit logging by pressing Ctrl+C`n" -ForegroundColor Gray
 
     $startTime = Get-Date
-    $allEvents = @()   # Full log (all PnP events)
-    $highImpactEvents = @()  # For live display
+    $allEvents = @()  # Full log (all PnP events)
+
+    # Log start event
+    $startTimeStr = $startTime.ToString("HH:mm:ss.fff")
+    Write-Host "$startTimeStr - Logging started" -ForegroundColor Green
+
+    $lastElapsedStr = ""
 
     try {
         while ($true) {
             $elapsed = (Get-Date) - $startTime
-            $elapsedStr = "{0:hh\:mm\:ss}" -f $elapsed
+            $elapsedStr = "{0:hh\:mm\:ss\.fff}" -f $elapsed
 
-            # Update elapsed time in place
+            # Update elapsed time in place (overwrite line)
             Write-Host "`rElapsed time: $elapsedStr" -NoNewline -ForegroundColor Green
 
-            # Fetch all recent PnP events (full background logging)
+            # Fetch recent PnP events (broad, all)
             $recent = Get-WinEvent -FilterHashtable @{
                 LogName = 'Microsoft-Windows-Kernel-PnP/Configuration'
-                StartTime = (Get-Date).AddMinutes(-5)
+                StartTime = (Get-Date).AddMinutes(-10)
             } -MaxEvents 200 -EA SilentlyContinue
 
             $newEvents = $recent | Where-Object { $allEvents -notcontains $_.Id }
             $allEvents += $newEvents.Id
 
-            # Filter high-impact for live display
-            $highImpact = $newEvents | Where-Object { $_.Message -match "(?i)(disconnect|hotplug|error|fail|reset|fault|overcurrent|timeout|CRC|EDID|recovery)" }
-
-            if ($highImpact -and $highImpact.Count -gt 0) {
-                $highImpactEvents += $highImpact
-                foreach ($ev in $highImpact) {
-                    $time = $ev.TimeCreated.ToString("HH:mm:ss")
-                    $msg = $ev.Message.Trim()
-                    if ($msg.Length -gt 100) { $msg = $msg.Substring(0, 100) + "..." }
-                    Write-Host "`n$time - $msg" -ForegroundColor Yellow
-                }
+            foreach ($ev in $newEvents) {
+                $time = $ev.TimeCreated.ToString("HH:mm:ss.fff")
+                $msg = $ev.Message.Trim()
+                if ($msg.Length -gt 120) { $msg = $msg.Substring(0, 120) + "..." }
+                Write-Host "`n$time - $msg" -ForegroundColor White
             }
 
             Start-Sleep -Seconds 5
@@ -281,7 +280,7 @@ if ($runAnalytics -match '^[Yy]') {
     Write-Host $displayTreeOutput
 
     Write-Host ""
-    Write-Host "Analytics summary: Total PnP events logged: $($allEvents.Count) | High-impact events: $($highImpactEvents.Count)" -ForegroundColor Green
+    Write-Host "Analytics summary: Total events logged: $($allEvents.Count)" -ForegroundColor Green
 
     $reOpen = Read-Host "Open HTML report in browser? (y/n)"
     if ($reOpen -match '^[Yy]') {
