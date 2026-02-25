@@ -1,9 +1,8 @@
-# proav-shoko_powershell.ps1 - Shōko Main Logic
-# USB tree + display tree always shown, combined report, analytics loop
+# proav-shoko_powershell.ps1 - Shōko Main Logic (full flow: USB + Display trees always, combined report, real analytics loop)
 
 $ErrorActionPreference = 'Stop'
 
-# Load config
+# Load config from your current repo
 try {
     $Config = Invoke-RestMethod "https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.json"
     $Version = $Config.version
@@ -31,7 +30,7 @@ $outHtml = "$env:TEMP\shoko-report-$dateStamp.html"
 $htmlContent = "<html><body style='background:#000;color:#0f0;font-family:Consolas;'><pre>Shōko Report - $dateStamp`n`n"
 
 # ────────────────────────────────────────────────────────────────────────────────
-# USB TREE – always shown
+# USB TREE – always shown first
 # ────────────────────────────────────────────────────────────────────────────────
 
 Write-Host "Enumerating USB devices..." -ForegroundColor Gray
@@ -122,14 +121,13 @@ Write-Host "HOST SUMMARY: STABLE (Score: $baseStabilityScore/10)" -ForegroundCol
 $htmlContent += "USB TREE`n$treeOutput`nMax hops: $maxHops | Tiers: $numTiers | Devices: $($devices.Count) | Hubs: $($hubs.Count)`n`nSTABILITY PER PLATFORM`n$statusSummary`n`nHOST SUMMARY: STABLE (Score: $baseStabilityScore/10)`n`n"
 
 # ────────────────────────────────────────────────────────────────────────────────
-# DISPLAY TREE – shown immediately after USB tree
+# DISPLAY TREE – always shown immediately after USB
 # ────────────────────────────────────────────────────────────────────────────────
 
 Write-Host ""
 Write-Host "Enumerating displays..." -ForegroundColor Gray
 
 $displayTreeOutput = ""
-
 $monitors = Get-CimInstance -Namespace root\wmi -Class WmiMonitorID -EA SilentlyContinue
 $connections = Get-CimInstance -Namespace root\wmi -Class WmiMonitorConnectionParams -EA SilentlyContinue
 $controllers = Get-CimInstance Win32_VideoController -EA SilentlyContinue
@@ -186,7 +184,7 @@ if ($monitors -and $monitors.Count -gt 0) {
 }
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Save combined report & ask browser
+# Save combined report (USB + Display + score) & ask browser
 # ────────────────────────────────────────────────────────────────────────────────
 
 $htmlContent += "</pre></body></html>"
@@ -195,7 +193,7 @@ $htmlContent | Out-File $outHtml -Encoding UTF8
 $txtContent = $htmlContent -replace "<[^>]+>","" -replace "\s+"," "
 $txtContent | Out-File $outTxt
 
-Write-Host "Combined report saved: $outTxt / $outHtml" -ForegroundColor Gray
+Write-Host "Combined report saved (USB + Display + Score): $outTxt / $outHtml" -ForegroundColor Gray
 
 $openBrowser = Read-Host "Open HTML report in browser? (y/n)"
 if ($openBrowser -match '^[Yy]') {
@@ -203,38 +201,61 @@ if ($openBrowser -match '^[Yy]') {
 }
 
 # ────────────────────────────────────────────────────────────────────────────────
-# Deep Analytics – USB + Display monitoring loop
+# Deep Analytics Loop (USB + Display events, elapsed time, error list)
 # ────────────────────────────────────────────────────────────────────────────────
 
-$runAnalytics = Read-Host "Run deep analytics (USB + Display monitoring, Ctrl+C to stop)? (y/n)"
+$runAnalytics = Read-Host "Run deep analytics (USB + Display events, Ctrl+C to stop)? (y/n)"
 if ($runAnalytics -match '^[Yy]' -and $isAdmin) {
     Write-Host "Deep analytics mode started (USB + Display). Press Ctrl+C to exit." -ForegroundColor Green
 
+    $startTime = Get-Date
+    $eventLog = @()
+
     try {
         while ($true) {
-            $time = Get-Date -Format "HH:mm:ss"
-            Write-Host "$time - Monitoring USB & Display stability..."
+            $elapsed = (Get-Date) - $startTime
+            $elapsedStr = "{0:hh\:mm\:ss}" -f $elapsed
 
-            # Optional: re-check recent PnP events for disconnects / hotplugs
-            $recentEvents = Get-WinEvent -FilterHashtable @{
+            Write-Host "`n[$elapsedStr] Monitoring USB & Display events..." -ForegroundColor Green
+
+            $recent = Get-WinEvent -FilterHashtable @{
                 LogName = 'Microsoft-Windows-Kernel-PnP/Configuration'
                 StartTime = (Get-Date).AddMinutes(-5)
             } -MaxEvents 50 -EA SilentlyContinue |
-                Where-Object { $_.Message -match "(?i)(usb|display|monitor|connect|disconnect|hotplug|EDID)" }
+                Where-Object { $_.Message -match "(?i)(usb|hub|display|monitor|connect|disconnect|hotplug|EDID|error|fail|reset)" }
 
-            if ($recentEvents.Count -gt 0) {
-                Write-Host "  Recent events: $($recentEvents.Count) (USB/Display related)" -ForegroundColor Yellow
+            if ($recent -and $recent.Count -gt 0) {
+                Write-Host "  Found $($recent.Count) relevant events in last 5 min:" -ForegroundColor Yellow
+                $newEvents = $recent | Where-Object { $eventLog -notcontains $_.Id }
+                foreach ($ev in $newEvents) {
+                    $time = $ev.TimeCreated.ToString("HH:mm:ss")
+                    $msg = $ev.Message.Trim().Substring(0, [Math]::Min(80, $ev.Message.Length))
+                    Write-Host "  $time - $msg" -ForegroundColor Yellow
+                    $eventLog += $ev.Id
+                }
             } else {
-                Write-Host "  No recent events" -ForegroundColor Green
+                Write-Host "  No new relevant events in last 5 min" -ForegroundColor Green
             }
 
-            Start-Sleep -Seconds 5
+            Start-Sleep -Seconds 10
         }
     }
+    catch [System.Management.Automation.Host.PromptingException] {
+        Write-Host "`nCtrl+C detected. Exiting analytics mode." -ForegroundColor Yellow
+    }
     catch {
-        Write-Host "Analytics stopped (Ctrl+C detected)." -ForegroundColor Yellow
+        Write-Host "Analytics error: $($_.Exception.Message)" -ForegroundColor Red
+    }
+
+    # After Ctrl+C → back to main view + re-ask browser
+    Write-Host "`nReturning to main view..." -ForegroundColor Gray
+    Write-Host "Previous data still available in report: $outHtml" -ForegroundColor Cyan
+
+    $reOpen = Read-Host "Re-open HTML report in browser? (y/n)"
+    if ($reOpen -match '^[Yy]') {
+        Start-Process $outHtml
     }
 }
 
-Write-Host "Shōko finished. Press Enter to close." -ForegroundColor Green
+Write-Host "`nShōko finished. Press Enter to close." -ForegroundColor Green
 Read-Host
