@@ -203,13 +203,13 @@ function Get-UsbTree {
     }
     
     if (-not $allDevices) { $allDevices = @() }
-
+    
     $devices = @()
     $hubs = @()
     $treeOutput = "HOST`n"
     $maxHops = 0
     $deviceMap = @{}
-
+    
     if ($allDevices.Count -eq 0) {
         $treeOutput += "├── USB Root Hub (Host Controller) [HUB] ← 1 hops`n"
         $treeOutput += "│   └── No USB devices connected`n"
@@ -302,7 +302,6 @@ function Get-UsbTree {
         DeviceMap = $deviceMap
     }
 }
-
 # =============================================================================
 # DISPLAY TREE
 # =============================================================================
@@ -323,7 +322,7 @@ function Get-DisplayTree {
         Write-Verbose "Failed to get monitor info: $_"
         @()
     }
-
+    
     if ($monitors -and $monitors.Count -gt 0) {
         for ($i = 0; $i -lt $monitors.Count; $i++) {
             $m = $monitors[$i]
@@ -408,7 +407,7 @@ function Get-PlatformStability {
                   elseif ($Tiers -le $max) { "POTENTIALLY UNSTABLE" } 
                   else { "NOT STABLE" }
         
-        $modelScore = 9 - ($Tiers - 1)  # Convert tiers back to hops
+        $modelScore = 9 - ($Tiers - 1)
         if ($modelScore -lt $Config.scoring.minScore) { $modelScore = $Config.scoring.minScore }
         if ($modelScore -gt $Config.scoring.maxScore) { $modelScore = $Config.scoring.maxScore }
         
@@ -448,7 +447,6 @@ function Get-PlatformStability {
         Verdict = $verdict
     }
 }
-
 # =============================================================================
 # REPORTING
 # =============================================================================
@@ -735,6 +733,8 @@ DISPLAY ERRORS: $($counters.edidErrors + $counters.linkFailures)
         Log = $analyticsLog
         SummaryText = $summaryText
         LogText = $analyticsLog -join "`n"
+        InitialScore = $initialData.Score
+        InitialVerdict = $initialData.Verdict
     }
 }
 
