@@ -1,6 +1,7 @@
 # =============================================================================
 # Shōko - USB + Display Diagnostic Tool v1.1.0
-# Fixes: no early HTML prompt, USB tree always shows HOST + tree or fallback
+# Full version - USB tree fixed, no early HTML prompt, basic mode counters message
+# Analytics: 2s refresh, all counters visible, SYSTEM STATUS block
 # =============================================================================
 
 # =============================================================================
@@ -23,6 +24,7 @@ function Get-Color {
 
 function Format-Score {
     param([double]$Score)
+    if ($null -eq $Score) { return "0.0" }
     $clamped = [Math]::Max(0.0, [Math]::Min(10.0, $Score))
     return $clamped.ToString("N1")
 }
@@ -33,11 +35,20 @@ function Format-Duration {
 }
 
 # =============================================================================
-# PLATFORM STABILITY
+# PLATFORM STABILITY – null safe
 # =============================================================================
 
 function Get-PlatformStability {
     param($Config, $Usb)
+
+    if ($null -eq $Config -or $null -eq $Config.referenceModels) {
+        return [PSCustomObject]@{
+            ReferenceOutput  = "No reference models loaded (config error)"
+            AdditionalOutput = "No additional models loaded (config error)"
+            WorstScore       = 0.0
+            Verdict          = "UNKNOWN"
+        }
+    }
 
     $referenceOutput = ""
     $additionalOutput = ""
@@ -80,7 +91,7 @@ function Get-PlatformStability {
 }
 
 # =============================================================================
-# REPORTING – USB tree always has HOST line
+# REPORTING
 # =============================================================================
 
 function Show-Report {
@@ -119,15 +130,91 @@ function Show-Report {
     Write-Host "STABILITY PER PLATFORM" -ForegroundColor Cyan
     Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host "Reference models (affects score):" -ForegroundColor White
-    Write-Host $Stability.ReferenceOutput
+    if ([string]::IsNullOrWhiteSpace($Stability.ReferenceOutput)) {
+        Write-Host "No reference models loaded"
+    } else {
+        Write-Host $Stability.ReferenceOutput
+    }
     Write-Host "Additional models (reference only):" -ForegroundColor White
-    Write-Host $Stability.AdditionalOutput
+    if ([string]::IsNullOrWhiteSpace($Stability.AdditionalOutput)) {
+        Write-Host "No additional models loaded"
+    } else {
+        Write-Host $Stability.AdditionalOutput
+    }
     Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host ""
 
     $verdictColor = Get-Color $Config.colors.($Stability.Verdict.ToLower() -replace ' ','')
     Write-Host "HOST SUMMARY: $(Format-Score $Stability.WorstScore)/10.0 - $($Stability.Verdict)" -ForegroundColor $verdictColor
     Write-Host ""
+}
+
+function Save-HtmlReport {
+    param($Config, $System, $Usb, $Display, $Stability, $Analytics = $null)
+
+    $dateStamp = Get-Date -Format "yyyyMMdd-HHmmss"
+    $outHtml = "$env:TEMP\shoko-report-$dateStamp.html"
+
+    $usbContent = if ([string]::IsNullOrWhiteSpace($Usb.Tree) -or $Usb.Devices -eq 0) { "HOST`n└── Nothing detected" } else { $Usb.Tree }
+    $displayContent = if ([string]::IsNullOrWhiteSpace($Display)) { "HOST`n└── Nothing detected" } else { $Display }
+
+    $analyticsSection = ""
+    if ($Analytics) {
+        $analyticsSection = @"
+
+HOST SUMMARY (initial): $(Format-Score $Analytics.InitialScore)/10.0 - $($Analytics.InitialVerdict)
+HOST SUMMARY (adjusted): $(Format-Score $Analytics.AdjustedScore)/10.0 - $($Analytics.AdjustedVerdict)
+
+==============================================================================
+Analytics Summary (during monitoring):
+Total events logged: $($Analytics.Counters.total)
+Points deducted: -$([math]::Round($Analytics.Deductions,1))
+
+==============================================================================
+Analytics Log (during monitoring):
+$($Analytics.Log -join "`n")
+"@
+    } else {
+        $analyticsSection = "HOST SUMMARY: $(Format-Score $Stability.WorstScore)/10.0 - $($Stability.Verdict)"
+    }
+
+    $htmlContent = @"
+<html>
+<head><title>Shōko Report $dateStamp</title></head>
+<body style='background:#000;color:#0f0;font-family:Consolas;'>
+<pre>
+Shōko Report - $dateStamp
+
+$($System.Mode)
+Host: $($System.OSVersion) | PowerShell $($System.PSVersion)
+Arch: $($System.Architecture) | Current: $($System.CurrentPlatform)
+
+USB TREE
+==============================================================================
+$usbContent
+Max hops: $($Usb.MaxHops) | Tiers: $($Usb.Tiers) | Devices: $($Usb.Devices) | Hubs: $($Usb.Hubs)
+
+DISPLAY TREE
+==============================================================================
+$displayContent
+STABILITY PER PLATFORM
+==============================================================================
+Reference models (affects score):
+$($Stability.ReferenceOutput)
+Additional models (reference only):
+$($Stability.AdditionalOutput)
+==============================================================================
+
+$analyticsSection
+</pre></body></html>
+"@
+
+    try {
+        $htmlContent | Out-File $outHtml -Encoding UTF8
+        Start-Process $outHtml
+    } catch {
+        Write-Host "Failed to save/open HTML: $_" -ForegroundColor Red
+    }
 }
 
 # =============================================================================
@@ -288,9 +375,17 @@ function Show-FinalReport {
     Write-Host "STABILITY PER PLATFORM" -ForegroundColor Cyan
     Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host "Reference models (affects score):" -ForegroundColor White
-    Write-Host $InitialData.ReferenceOutput
+    if ([string]::IsNullOrWhiteSpace($InitialData.ReferenceOutput)) {
+        Write-Host "No reference models loaded"
+    } else {
+        Write-Host $InitialData.ReferenceOutput
+    }
     Write-Host "Additional models (reference only):" -ForegroundColor White
-    Write-Host $InitialData.AdditionalOutput
+    if ([string]::IsNullOrWhiteSpace($InitialData.AdditionalOutput)) {
+        Write-Host "No additional models loaded"
+    } else {
+        Write-Host $InitialData.AdditionalOutput
+    }
     Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host ""
 
@@ -329,7 +424,7 @@ function Show-FinalReport {
 }
 
 # =============================================================================
-# MAIN – HTML prompt only AFTER analytics or at end
+# MAIN – HTML prompt only at appropriate time
 # =============================================================================
 
 function Main {
@@ -344,20 +439,16 @@ function Main {
 
     Show-Report -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
 
-    # NO HTML prompt here anymore
-
     $analyticsChoice = Read-Host "Run deep analytics session? (y/n)"
     if ($analyticsChoice -match '^[Yy]') {
         $Analytics = Start-AnalyticsSession -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
         Show-FinalReport -Config $Config -System $System -InitialData $Analytics.InitialData -Stability $Stability -Analytics $Analytics
 
-        # HTML prompt only AFTER analytics
         $finalHtml = Read-Host "`nOpen HTML report with full data? (y/n)"
         if ($finalHtml -match '^[Yy]') {
             Save-HtmlReport -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability -Analytics $Analytics
         }
     } else {
-        # If no analytics → ask for HTML at the very end
         $htmlChoice = Read-Host "Open HTML report? (y/n)"
         if ($htmlChoice -match '^[Yy]') {
             Save-HtmlReport -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
