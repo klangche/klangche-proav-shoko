@@ -3,15 +3,12 @@
     Shōko - USB + Display Diagnostic Tool
 .DESCRIPTION
     Analyzes USB topology, display connections, and platform stability.
-    Provides real-time analytics for connection events in ProAV environments.
+    Requires configuration file – will not run without it.
 .PARAMETER Verbose
     Show detailed debug information during execution
 .EXAMPLE
     .\proav-shoko_powershell.ps1
     Run in interactive mode
-.EXAMPLE
-    .\proav-shoko_powershell.ps1 -Verbose
-    Run with debug output
 #>
 
 [CmdletBinding()]
@@ -20,52 +17,72 @@ param()
 $ErrorActionPreference = 'Stop'
 
 # =============================================================================
-# CONFIGURATION LOADING WITH AUTO-RETRY
+# CONFIGURATION LOADING – MUST SUCCEED TO CONTINUE
 # =============================================================================
 
 function Load-Configuration {
     <#
     .SYNOPSIS
-        Load configuration from GitHub with 3 automatic retries
+        Load configuration from GitHub with visible retry attempts
+        Exits if config cannot be loaded
     #>
     $configUrl = "https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.json"
     $maxRetries = 3
     $retryCount = 0
     $delay = 2 # seconds
     
+    Clear-Host
+    Write-Host "==============================================================================" -ForegroundColor Cyan
+    Write-Host "Shōko - Loading Configuration" -ForegroundColor Cyan
+    Write-Host "==============================================================================" -ForegroundColor Cyan
+    Write-Host ""
+    
     while ($retryCount -lt $maxRetries) {
+        $retryCount++
+        Write-Host "[Attempt $retryCount of $maxRetries] Loading config from GitHub..." -ForegroundColor Gray
+        
         try {
-            if ($retryCount -gt 0) {
-                Write-Host "Retry $retryCount of $maxRetries..." -ForegroundColor Yellow
-            }
-            Write-Verbose "Loading configuration from $configUrl (attempt $($retryCount + 1))"
             $config = Invoke-RestMethod $configUrl
-            Write-Verbose "Configuration loaded successfully, version: $($config.version)"
+            Write-Host ""
+            Write-Host "✓ Configuration loaded successfully!" -ForegroundColor Green
+            Write-Host "  Version: $($config.version)" -ForegroundColor Green
+            Write-Host "  Reference models: $($config.referenceModels.Count)" -ForegroundColor Green
+            Write-Host "  Additional models: $($config.additionalModels.Count)" -ForegroundColor Green
+            Start-Sleep -Seconds 1
             return $config
         } catch {
-            $retryCount++
-            Write-Verbose "Failed to load config (attempt $retryCount): $_"
+            Write-Host "  ✗ Failed to load config: $($_.Exception.Message)" -ForegroundColor Red
             
             if ($retryCount -lt $maxRetries) {
-                Write-Host "Config download failed, retrying in $delay seconds..." -ForegroundColor Yellow
+                Write-Host "  Retrying in $delay seconds..." -ForegroundColor Yellow
                 Start-Sleep -Seconds $delay
             }
         }
     }
     
     # If we get here, all retries failed
-    Write-Host "`nFailed to load configuration after $maxRetries attempts." -ForegroundColor Red
-    Write-Host "Please check your internet connection and try again." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "==============================================================================" -ForegroundColor Red
+    Write-Host "CONFIGURATION LOAD FAILED" -ForegroundColor Red
+    Write-Host "==============================================================================" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "The script cannot run without the configuration file." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Options:" -ForegroundColor White
+    Write-Host "  y - Retry loading configuration" -ForegroundColor Cyan
+    Write-Host "  n - Exit" -ForegroundColor Gray
     Write-Host ""
     
     $retry = Read-Host "retry (y/n)"
     if ($retry -match '^[Yy]') {
-        Write-Host "`nRestarting..." -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "Restarting..." -ForegroundColor Gray
         Start-Sleep -Seconds 1
         & $PSCommandPath @PSBoundParameters
         exit
     } else {
-        Write-Host "`nNothing to run. Press Enter to exit." -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "Exiting. Press Enter to close." -ForegroundColor Gray
         Read-Host
         exit
     }
@@ -76,10 +93,6 @@ function Load-Configuration {
 # =============================================================================
 
 function Get-Color {
-    <#
-    .SYNOPSIS
-        Convert color name to console color
-    #>
     param($n) 
     $colorMap = @{
         "cyan" = "Cyan"
@@ -94,28 +107,16 @@ function Get-Color {
 }
 
 function Format-PlatformLine {
-    <#
-    .SYNOPSIS
-        Format a platform stability line with Hops header
-    #>
     param($tiers, $max, $name, $status)
     return "{0,-4} {1,-40} {2}" -f "$tiers/$max", $name, $status
 }
 
 function Format-Score {
-    <#
-    .SYNOPSIS
-        Format score with two digits and one decimal (e.g., 10.0, 05.5, 00.0)
-    #>
     param($score)
     return "{0:00.0}" -f [Math]::Round($score, 1)
 }
 
 function Format-Duration {
-    <#
-    .SYNOPSIS
-        Format timespan as HH:MM:SS.fff
-    #>
     param($timespan)
     return "{0:hh\:mm\:ss\.fff}" -f $timespan
 }
@@ -125,10 +126,6 @@ function Format-Duration {
 # =============================================================================
 
 function Get-SystemInfo {
-    <#
-    .SYNOPSIS
-        Get system information including OS, PowerShell version, admin status
-    #>
     Write-Verbose "Getting system information"
     
     $isAdmin = try {
@@ -150,7 +147,6 @@ function Get-SystemInfo {
     $psVersion = $PSVersionTable.PSVersion.ToString()
     $arch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
     
-    # Detect current platform
     $currentPlatform = "Windows x86"
     if ([Environment]::Is64BitOperatingSystem -and [Environment]::ProcessorArchitecture -eq "Arm64") {
         $currentPlatform = "Windows ARM"
@@ -171,10 +167,6 @@ function Get-SystemInfo {
 # =============================================================================
 
 function Get-UsbTree {
-    <#
-    .SYNOPSIS
-        Enumerate USB devices and build proper hierarchical tree
-    #>
     param($Config)
     
     Write-Verbose "Enumerating USB devices"
@@ -193,7 +185,6 @@ function Get-UsbTree {
     $maxHops = 0
     $deviceMap = @{}
     
-    # First pass: create device objects with depth and parent info
     foreach ($d in $allDevices) {
         $isHub = ($d.FriendlyName -like "*hub*") -or ($d.Name -like "*hub*") -or ($d.Class -eq "USBHub")
         if ($isHub) {
@@ -202,11 +193,9 @@ function Get-UsbTree {
             $devices += $d
         }
         
-        # Get depth from instance ID (count backslashes)
         $depth = ($d.InstanceId.ToCharArray() | Where-Object {$_ -eq '\'} | Measure-Object).Count
         if ($depth -gt $maxHops) { $maxHops = $depth }
         
-        # Extract parent ID (remove last segment)
         $lastSlash = $d.InstanceId.LastIndexOf('\')
         $parentId = if ($lastSlash -gt 0) { $d.InstanceId.Substring(0, $lastSlash) } else { "" }
         
@@ -219,7 +208,6 @@ function Get-UsbTree {
         }
     }
     
-    # Second pass: build parent-child relationships
     foreach ($id in $deviceMap.Keys) {
         $parent = $deviceMap[$id].Parent
         if ($parent -and $deviceMap.ContainsKey($parent)) {
@@ -227,7 +215,6 @@ function Get-UsbTree {
         }
     }
     
-    # Find root devices (those with no parent or parent not in map)
     $roots = @()
     foreach ($id in $deviceMap.Keys) {
         $parent = $deviceMap[$id].Parent
@@ -236,14 +223,12 @@ function Get-UsbTree {
         }
     }
     
-    # If no roots found, use depth 1 as fallback
     if ($roots.Count -eq 0) {
         $roots = $deviceMap.Keys | Where-Object { $deviceMap[$_].Depth -eq 1 }
     }
     
     $roots = $roots | Sort-Object { $deviceMap[$_].Name }
     
-    # Recursive tree printer
     $treeOutput = "HOST`n"
     
     function Write-DeviceNode {
@@ -252,7 +237,6 @@ function Get-UsbTree {
         $node = $deviceMap[$id]
         if (-not $node) { return }
         
-        # Build the prefix with proper tree characters
         $prefix = ""
         if ($level -gt 0) {
             $prefix = "│   " * ($level - 1)
@@ -264,7 +248,6 @@ function Get-UsbTree {
         $hubTag = if ($node.IsHub) { " [HUB]" } else { "" }
         $script:treeOutput += "$prefix$($node.Name)$hubTag ← $($node.Depth) hops`n"
         
-        # Process children
         $children = $node.Children | Sort-Object { $deviceMap[$_].Name }
         for ($i = 0; $i -lt $children.Count; $i++) {
             $childIsLast = ($i -eq $children.Count - 1)
@@ -272,13 +255,11 @@ function Get-UsbTree {
         }
     }
     
-    # Handle case with no devices
     if ($roots.Count -eq 0) {
         $treeOutput += "├── USB Root Hub (Host Controller) [HUB] ← 1 hops`n"
         $treeOutput += "│   $($Config.messages.noDevices)`n"
         $maxHops = 1
     } else {
-        # Print all roots
         for ($i = 0; $i -lt $roots.Count; $i++) {
             $isLastRoot = ($i -eq $roots.Count - 1)
             Write-DeviceNode $roots[$i] 0 $isLastRoot
@@ -301,10 +282,6 @@ function Get-UsbTree {
 # =============================================================================
 
 function Get-DisplayTree {
-    <#
-    .SYNOPSIS
-        Enumerate displays and connection information
-    #>
     param($Config)
     
     Write-Verbose "Enumerating displays"
@@ -380,10 +357,6 @@ function Get-DisplayTree {
 # =============================================================================
 
 function Get-PlatformStability {
-    <#
-    .SYNOPSIS
-        Calculate stability for reference and additional models
-    #>
     param($Config, $Tiers, $MaxHops)
     
     Write-Verbose "Calculating platform stability for $Tiers tiers ($MaxHops external hops)"
@@ -397,7 +370,6 @@ function Get-PlatformStability {
     $referenceScores = @()
     $worstReferenceScore = $Config.scoring.maxScore
     
-    # Process reference models (affect score)
     foreach ($model in $Config.referenceModels) {
         $rec = $model.rec
         $max = $model.max
@@ -414,7 +386,6 @@ function Get-PlatformStability {
         if ($baseScore -lt $worstReferenceScore) { $worstReferenceScore = $baseScore }
     }
     
-    # Process additional models (reference only)
     foreach ($model in $Config.additionalModels) {
         $rec = $model.rec
         $max = $model.max
@@ -445,10 +416,6 @@ function Get-PlatformStability {
 # =============================================================================
 
 function Show-Report {
-    <#
-    .SYNOPSIS
-        Display the main report
-    #>
     param($Config, $System, $Usb, $Display, $Stability)
     
     Clear-Host
@@ -486,10 +453,6 @@ function Show-Report {
 }
 
 function Save-HtmlReport {
-    <#
-    .SYNOPSIS
-        Save report as HTML file and open in browser
-    #>
     param($Config, $System, $Usb, $Display, $Stability, $Analytics = $null)
     
     $dateStamp = Get-Date -Format "yyyyMMdd-HHmmss"
@@ -563,15 +526,10 @@ $analyticsSection
 # =============================================================================
 
 function Start-AnalyticsSession {
-    <#
-    .SYNOPSIS
-        Run real-time monitoring of USB/display events with working timer
-    #>
     param($Config, $System, $Usb, $Display, $Stability)
     
     Write-Verbose "Starting analytics session"
     
-    # Store initial data
     $initialData = [PSCustomObject]@{
         Tree = $Usb.Tree
         Display = $Display
@@ -587,7 +545,6 @@ function Start-AnalyticsSession {
     
     Clear-Host
     
-    # Analytics header - fixed positions for updates
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "Shoko Analytics" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
@@ -599,7 +556,6 @@ function Start-AnalyticsSession {
     }
     Write-Host ""
     
-    # Initial stats display - will be updated
     Write-Host "Duration: 00:00:00.000" -ForegroundColor (Get-Color $Config.colors.green)
     Write-Host "Total events logged: 0" -ForegroundColor (Get-Color $Config.colors.white)
     
@@ -627,9 +583,7 @@ function Start-AnalyticsSession {
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "Analytics Log:" -ForegroundColor (Get-Color $Config.colors.cyan)
     
-    $logStartLine = 18  # Starting line for log entries
-    
-    # Analytics counters
+    $logStartLine = 18
     $analyticsLog = @()
     $startTime = Get-Date
     $analyticsLog += "$($startTime.ToString('HH:mm:ss.fff')) - Logging started"
@@ -649,18 +603,15 @@ function Start-AnalyticsSession {
         otherErrors = 0
     }
     
-    # Show initial log entry
     Write-Host $analyticsLog[0]
     
     while (-not $Host.UI.RawUI.KeyAvailable) {
         $elapsed = (Get-Date) - $startTime
         $duration = Format-Duration $elapsed
         
-        # Update timer (line 6)
         $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, 6
         Write-Host "Duration: $duration" -ForegroundColor (Get-Color $Config.colors.green)
         
-        # Update stats based on mode
         if ($System.IsAdmin) {
             $line = 8
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $line; Write-Host "USB RE-HANDSHAKES: $($counters.rehandshakes)          "
@@ -683,7 +634,7 @@ function Start-AnalyticsSession {
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 6); Write-Host "DISPLAY ERRORS: $($counters.edidErrors + $counters.linkFailures)          "
         }
         
-        # SIMULATE EVENTS FOR TESTING - REPLACE WITH REAL EVENT MONITORING
+        # SIMULATE EVENTS - REPLACE WITH REAL EVENT MONITORING
         if ($analyticsLog.Count -eq 1 -and $startTime.AddSeconds(3) -lt (Get-Date)) {
             $newEvents = @(
                 "$($startTime.AddSeconds(2).ToString('HH:mm:ss.fff')) - [CONNECT] USB device connected (VID_046D/PID_0843)",
@@ -699,7 +650,6 @@ function Start-AnalyticsSession {
             $counters.connects = 2
             $counters.disconnects = 1
             
-            # Update total events line
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, 7
             Write-Host "Total events logged: $($counters.total)          "
         }
@@ -707,17 +657,14 @@ function Start-AnalyticsSession {
         Start-Sleep -Milliseconds 500
     }
     
-    # Stop analytics
     $key = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
     $stopTime = Get-Date
     $totalDuration = Format-Duration ($stopTime - $startTime)
     $analyticsLog += "$($stopTime.ToString('HH:mm:ss.fff')) - Logging ended (total duration: $totalDuration)"
     
-    # Show final log entry
     $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($logStartLine + $analyticsLog.Count - 1)
     Write-Host $analyticsLog[-1]
     
-    # Calculate deductions
     $deductions = 0.0
     if ($System.IsAdmin) {
         $deductions = ($counters.rehandshakes * $Config.scoring.penalties.rehandshake) +
@@ -743,7 +690,6 @@ function Start-AnalyticsSession {
                        elseif ($adjustedScore -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" } 
                        else { "NOT STABLE" }
     
-    # Build summary text
     if ($System.IsAdmin) {
         $summaryText = @"
 USB RE-HANDSHAKES: $($counters.rehandshakes)
@@ -783,10 +729,6 @@ DISPLAY ERRORS: $($counters.edidErrors + $counters.linkFailures)
 }
 
 function Show-FinalReport {
-    <#
-    .SYNOPSIS
-        Display final report after analytics session
-    #>
     param($Config, $System, $InitialData, $Stability, $Analytics)
     
     Clear-Host
@@ -845,10 +787,6 @@ function Show-FinalReport {
 # =============================================================================
 
 function Main {
-    <#
-    .SYNOPSIS
-        Main execution flow
-    #>
     Write-Verbose "Starting Shōko main script"
     
     $Config = Load-Configuration
@@ -862,20 +800,17 @@ function Main {
     
     Show-Report -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
     
-    # Question - Analytics
     $analyticsChoice = Read-Host "Run deep analytics session? (y/n)"
     if ($analyticsChoice -match '^[Yy]') {
         $Analytics = Start-AnalyticsSession -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
         
         Show-FinalReport -Config $Config -System $System -InitialData $Analytics.InitialData -Stability $Stability -Analytics $Analytics
         
-        # Question - HTML report with full data
         $finalHtmlChoice = Read-Host "`nOpen HTML report with full data? (y/n)"
         if ($finalHtmlChoice -match '^[Yy]') {
             Save-HtmlReport -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability -Analytics $Analytics
         }
     } else {
-        # If no analytics, ask about HTML report
         $htmlChoice = Read-Host "Open HTML report with full data? (y/n)"
         if ($htmlChoice -match '^[Yy]') {
             Save-HtmlReport -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
@@ -886,5 +821,4 @@ function Main {
     Read-Host
 }
 
-# Run main
 Main
