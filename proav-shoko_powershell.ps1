@@ -207,22 +207,24 @@ function Get-SystemInfo {
 }
 
 # =============================================================================
-# USB TREE - PROPER HIERARCHICAL VERSION
+# USB TREE - DIAGNOSTIC VERSION WITH DEBUG OUTPUT
 # =============================================================================
 
 function Get-UsbTree {
     <#
     .SYNOPSIS
-        Enumerate USB devices and build hierarchical tree
+        Enumerate USB devices and build hierarchical tree with debug output
     #>
     param($Config)
     
-    Write-Verbose "Enumerating USB devices"
+    Write-Host "`n[DEBUG] Starting USB enumeration..." -ForegroundColor Magenta
     
     $allDevices = try {
-        Get-PnpDevice -Class USB -ErrorAction Stop | Where-Object {$_.Status -eq 'OK'}
+        $devs = Get-PnpDevice -Class USB -ErrorAction Stop | Where-Object {$_.Status -eq 'OK'}
+        Write-Host "[DEBUG] Found $($devs.Count) USB devices" -ForegroundColor Cyan
+        $devs
     } catch {
-        Write-Verbose "Failed to get USB devices: $_"
+        Write-Host "[DEBUG] Failed to get USB devices: $_" -ForegroundColor Red
         @()
     }
     
@@ -233,6 +235,8 @@ function Get-UsbTree {
     $maxHops = 0
     $deviceMap = @{}
     $treeOutput = "HOST`n"
+    
+    Write-Host "[DEBUG] Processing devices..." -ForegroundColor Cyan
     
     # First pass: create device objects with depth and parent info
     foreach ($d in $allDevices) {
@@ -258,15 +262,23 @@ function Get-UsbTree {
             Parent = $parentId
             Children = @()
         }
+        
+        Write-Host "[DEBUG] Device: $($deviceMap[$d.InstanceId].Name) | Depth: $depth | Parent: $parentId" -ForegroundColor Gray
     }
     
+    Write-Host "[DEBUG] Building parent-child relationships..." -ForegroundColor Cyan
+    
     # Build parent-child relationships
+    $relationshipCount = 0
     foreach ($id in $deviceMap.Keys) {
         $parent = $deviceMap[$id].Parent
         if ($parent -and $deviceMap.ContainsKey($parent)) {
             $deviceMap[$parent].Children += $id
+            $relationshipCount++
+            Write-Host "[DEBUG] Child: $($deviceMap[$id].Name) -> Parent: $($deviceMap[$parent].Name)" -ForegroundColor Green
         }
     }
+    Write-Host "[DEBUG] Created $relationshipCount parent-child relationships" -ForegroundColor Cyan
     
     # Find root devices (those with no parent or parent not in map)
     $roots = @()
@@ -277,9 +289,12 @@ function Get-UsbTree {
         }
     }
     
+    Write-Host "[DEBUG] Found $($roots.Count) root devices" -ForegroundColor Cyan
+    
     # If no roots found, use depth 1 as fallback
     if ($roots.Count -eq 0) {
         $roots = $deviceMap.Keys | Where-Object { $deviceMap[$_].Depth -eq 1 }
+        Write-Host "[DEBUG] Using depth 1 fallback, found $($roots.Count) roots" -ForegroundColor Yellow
     }
     
     $roots = $roots | Sort-Object { $deviceMap[$_].Name }
@@ -313,10 +328,12 @@ function Get-UsbTree {
     
     # Handle case with no devices
     if ($roots.Count -eq 0) {
+        Write-Host "[DEBUG] No roots found, showing 'Nothing detected'" -ForegroundColor Yellow
         $treeOutput += "├── USB Root Hub (Host Controller) [HUB] ← 1 hops`n"
         $treeOutput += "│   $($Config.messages.noDevices)`n"
         $maxHops = 1
     } else {
+        Write-Host "[DEBUG] Building tree with $($roots.Count) roots..." -ForegroundColor Cyan
         # Print all roots
         for ($i = 0; $i -lt $roots.Count; $i++) {
             $isLastRoot = ($i -eq $roots.Count - 1)
@@ -325,6 +342,11 @@ function Get-UsbTree {
     }
     
     $numTiers = $maxHops + 1
+    
+    Write-Host "[DEBUG] Tree built with $maxHops max hops" -ForegroundColor Green
+    Write-Host "[DEBUG] Final tree output length: $($treeOutput.Length) characters" -ForegroundColor Green
+    Write-Host "[DEBUG] Press any key to continue..." -ForegroundColor Yellow
+    $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") | Out-Null
     
     return [PSCustomObject]@{
         Tree = $treeOutput
@@ -943,3 +965,4 @@ function Main {
 
 # Run main
 Main
+
