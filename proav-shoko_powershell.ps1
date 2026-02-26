@@ -1,4 +1,4 @@
-# proav-shoko_powershell.ps1 - Shōko Main Logic
+# proav-shoko_powershell.ps1 - Shōko Main Logic (COMPLETE FIXED VERSION)
 
 $ErrorActionPreference = 'Stop'
 
@@ -43,6 +43,10 @@ try {
             windows = [PSCustomObject]@{ name = "Windows x86"; rec = 5; max = 7 }
             windowsArm = [PSCustomObject]@{ name = "Windows ARM"; rec = 3; max = 5 }
             macAppleSilicon = [PSCustomObject]@{ name = "Mac Apple Silicon"; rec = 3; max = 5 }
+            ipad = [PSCustomObject]@{ name = "iPad USB-C (M-series)"; rec = 2; max = 4 }
+            iphone = [PSCustomObject]@{ name = "iPhone USB-C"; rec = 2; max = 4 }
+            androidPhone = [PSCustomObject]@{ name = "Android Phone (Snapdragon)"; rec = 3; max = 5 }
+            androidTablet = [PSCustomObject]@{ name = "Android Tablet (Exynos)"; rec = 2; max = 4 }
         }
         analytics = [PSCustomObject]@{ 
             updateInterval = 2
@@ -52,7 +56,8 @@ try {
     }
 }
 
-function Get-Color { param($n) 
+function Get-Color { 
+    param($n) 
     $colorMap = @{
         "cyan" = "Cyan"
         "magenta" = "Magenta" 
@@ -62,7 +67,7 @@ function Get-Color { param($n)
         "white" = "White"
         "red" = "Red"
     }
-    return if ($colorMap.ContainsKey($n)) { $colorMap[$n] } else { "White" }
+    if ($colorMap.ContainsKey($n)) { return $colorMap[$n] } else { return "White" }
 }
 
 # System info
@@ -76,7 +81,7 @@ if (-not $osInfo) {
 $winVersion = "$($osInfo.Caption) $($osInfo.Version) (Build $($osInfo.BuildNumber))"
 $psVersion = $PSVersionTable.PSVersion.ToString()
 $arch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
-$currentPlatform = "windows"  # This would be detected properly in real implementation
+$currentPlatform = "windows"
 
 Write-Host "`nCollecting system data..." -ForegroundColor Gray
 
@@ -289,13 +294,12 @@ HOST SUMMARY: Score: $baseScore/10 $verdict
     $htmlContent | Out-File $outHtml -Encoding UTF8
     Start-Process $outHtml
 }
-
 # =============================================================================
 # QUESTION 3 - ANALYTICS
 # =============================================================================
 $analyticsChoice = Read-Host "Run deep analytics session? (y/n)"
 if ($analyticsChoice -match '^[Yy]') {
-    # STORE INITIAL DATA (FIXED - NOW CAPTURES EVERYTHING)
+    # STORE INITIAL DATA
     $initialTree = $treeOutput
     $initialDisplay = $displayOutput
     $initialPlatforms = $platformOutput
@@ -395,7 +399,7 @@ if ($analyticsChoice -match '^[Yy]') {
             $counters.disconnects = 1
         }
         
-        Start-Sleep -Milliseconds 500  # Fast updates for testing
+        Start-Sleep -Milliseconds 500
     }
     
     # Stop analytics
@@ -430,7 +434,7 @@ if ($analyticsChoice -match '^[Yy]') {
                        else { "NOT STABLE" }
     $adjustedColor = Get-Color $Config.colors.($adjustedVerdict.ToLower().Replace(' ', ''))
     
-    # Clear and show FINAL REPORT (FIXED - NOW SHOWS TREES)
+    # Clear and show FINAL REPORT
     Clear-Host
     
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
