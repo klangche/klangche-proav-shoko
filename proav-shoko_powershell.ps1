@@ -465,29 +465,7 @@ if ($analyticsChoice -match '^[Yy]') {
             Write-Host $analyticsLog[$i]
         }
         
-        # Simulate events for testing
-        if ($analyticsLog.Count -eq 1) {
-            if ($isAdmin) {
-                $analyticsLog += "$($startTime.AddSeconds(2).ToString('HH:mm:ss.fff')) - [CONNECT] USB device connected (VID_046D/PID_0843) - Logitech Webcam C930e"
-                $analyticsLog += "$($startTime.AddSeconds(4).ToString('HH:mm:ss.fff')) - [DISCONNECT] USB device disconnected - Logitech Webcam C930e"
-                $analyticsLog += "$($startTime.AddSeconds(6).ToString('HH:mm:ss.fff')) - [RE-HANDSHAKE] USB device re-connected - Logitech Webcam C930e"
-                $analyticsLog += "$($startTime.AddSeconds(8).ToString('HH:mm:ss.fff')) - [CRC ERROR] USB transfer failed - hub port 3"
-                $counters.total = 4
-                $counters.connects = 2
-                $counters.disconnects = 1
-                $counters.rehandshakes = 1
-                $counters.crcErrors = 1
-            } else {
-                $analyticsLog += "$($startTime.AddSeconds(2).ToString('HH:mm:ss.fff')) - [CONNECT] VID_046D/PID_0843"
-                $analyticsLog += "$($startTime.AddSeconds(4).ToString('HH:mm:ss.fff')) - [DISCONNECT] VID_046D/PID_0843"
-                $analyticsLog += "$($startTime.AddSeconds(6).ToString('HH:mm:ss.fff')) - [CONNECT] VID_046D/PID_0843"
-                $analyticsLog += "$($startTime.AddSeconds(8).ToString('HH:mm:ss.fff')) - [ERROR] VID_046D/PID_0843"
-                $counters.total = 4
-                $counters.connects = 2
-                $counters.disconnects = 1
-                $counters.otherErrors = 1
-            }
-        }
+
         
         Start-Sleep -Milliseconds 500
     }
@@ -668,3 +646,4 @@ $analyticsLogText
 
 Write-Host "`nShōko finished. Press Enter to close." -ForegroundColor (Get-Color $Config.colors.green)
 Read-Host
+
