@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "lastUpdated": "2026-02-26",
   
   "metadata": {
@@ -9,9 +9,9 @@
   },
 
   "scoring": {
-    "baseFormula": "9 - maxHops",
-    "minScore": 1,
-    "maxScore": 10,
+    "baseFormula": "10.0 - maxHops",
+    "minScore": 0.0,
+    "maxScore": 10.0,
     
     "penalties": {
       "rehandshake": 0.5,
@@ -26,9 +26,9 @@
     },
     
     "thresholds": {
-      "stable": 7,
-      "potentiallyUnstable": 4,
-      "notStable": 1
+      "stable": 7.0,
+      "potentiallyUnstable": 4.5,
+      "notStable": 1.0
     }
   },
 
@@ -40,38 +40,38 @@
     {
       "id": "windows",
       "name": "Windows x86",
-      "rec": 5,
-      "max": 7
+      "rec": 7,
+      "max": 9
     },
     {
       "id": "windowsArm",
       "name": "Windows ARM",
-      "rec": 3,
-      "max": 5
+      "rec": 6,
+      "max": 8
     },
     {
       "id": "linux",
       "name": "Linux",
-      "rec": 4,
-      "max": 6
+      "rec": 6,
+      "max": 8
     },
     {
       "id": "linuxArm",
       "name": "Linux ARM",
-      "rec": 3,
-      "max": 5
-    },
-    {
-      "id": "macIntel",
-      "name": "Mac Intel",
       "rec": 5,
       "max": 7
     },
     {
+      "id": "macIntel",
+      "name": "Mac Intel",
+      "rec": 7,
+      "max": 9
+    },
+    {
       "id": "macAppleSilicon",
       "name": "Mac Apple Silicon",
-      "rec": 3,
-      "max": 5
+      "rec": 5,
+      "max": 7
     }
   ],
 
@@ -79,26 +79,26 @@
     {
       "id": "ipad",
       "name": "iPad USB-C (M-series)",
-      "rec": 2,
-      "max": 4
+      "rec": 4,
+      "max": 6
     },
     {
       "id": "iphone",
       "name": "iPhone USB-C",
-      "rec": 2,
-      "max": 4
+      "rec": 4,
+      "max": 6
     },
     {
       "id": "androidPhone",
       "name": "Android Phone (Snapdragon)",
-      "rec": 3,
-      "max": 5
+      "rec": 6,
+      "max": 8
     },
     {
       "id": "androidTablet",
       "name": "Android Tablet (Exynos)",
-      "rec": 2,
-      "max": 4
+      "rec": 4,
+      "max": 6
     }
   ],
 
