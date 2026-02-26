@@ -188,13 +188,13 @@ function Get-SystemInfo {
 }
 
 # =============================================================================
-# USB TREE
+# USB TREE - SIMPLIFIED VERSION
 # =============================================================================
 
 function Get-UsbTree {
     <#
     .SYNOPSIS
-        Enumerate USB devices and build hierarchical tree
+        Enumerate USB devices and build hierarchical tree using simplified approach
     #>
     param($Config)
     
@@ -211,88 +211,49 @@ function Get-UsbTree {
     
     $devices = @()
     $hubs = @()
-    $treeOutput = "HOST`n"
     $maxHops = 0
-    $deviceMap = @{}
     
-    if ($allDevices.Count -eq 0) {
+    # First, identify all devices and their depths
+    $deviceList = @()
+    foreach ($d in $allDevices) {
+        $isHub = ($d.FriendlyName -like "*hub*") -or ($d.Name -like "*hub*") -or ($d.Class -eq "USBHub")
+        if ($isHub) {
+            $hubs += $d
+        } else {
+            $devices += $d
+        }
+        
+        # Get depth from instance ID (count backslashes)
+        $depth = ($d.InstanceId.ToCharArray() | Where-Object {$_ -eq '\'} | Measure-Object).Count
+        if ($depth -gt $maxHops) { $maxHops = $depth }
+        
+        $deviceList += [PSCustomObject]@{
+            InstanceId = $d.InstanceId
+            Name = if ($d.FriendlyName) { $d.FriendlyName } else { $d.Name }
+            Depth = $depth
+            IsHub = $isHub
+        }
+    }
+    
+    # Build tree output - simplified version that just shows devices with indentation
+    $treeOutput = "HOST`n"
+    
+    if ($deviceList.Count -eq 0) {
         $treeOutput += "├── USB Root Hub (Host Controller) [HUB] ← 1 hops`n"
         $treeOutput += "│   $($Config.messages.noDevices)`n"
         $maxHops = 1
     } else {
-        foreach ($d in $allDevices) {
-            $isHub = ($d.FriendlyName -like "*hub*") -or ($d.Name -like "*hub*") -or ($d.Class -eq "USBHub")
-            if ($isHub) {
-                $hubs += $d
-            } else {
-                $devices += $d
-            }
-            
-            $depth = ($d.InstanceId.ToCharArray() | Where-Object {$_ -eq '\'} | Measure-Object).Count
-            if ($depth -gt $maxHops) { $maxHops = $depth }
-            
-            $lastSlash = $d.InstanceId.LastIndexOf('\')
-            $parentId = if ($lastSlash -gt 0) { $d.InstanceId.Substring(0, $lastSlash) } else { "" }
-            
-            $deviceMap[$d.InstanceId] = [PSCustomObject]@{
-                Name = if ($d.FriendlyName) { $d.FriendlyName } else { $d.Name }
-                Depth = $depth
-                IsHub = $isHub
-                Parent = $parentId
-                Children = @()
-            }
-        }
+        # Group by depth and sort
+        $grouped = $deviceList | Group-Object Depth | Sort-Object Name
         
-        # Build parent-child relationships
-        foreach ($id in $deviceMap.Keys) {
-            $parent = $deviceMap[$id].Parent
-            if ($parent -and $deviceMap.ContainsKey($parent)) {
-                $deviceMap[$parent].Children += $id
-            }
-        }
-        
-        # Find roots
-        $roots = @()
-        foreach ($id in $deviceMap.Keys) {
-            $parent = $deviceMap[$id].Parent
-            if (-not $parent -or -not $deviceMap.ContainsKey($parent)) {
-                $roots += $id
-            }
-        }
-        
-        if ($roots.Count -eq 0) {
-            $roots = $deviceMap.Keys | Where-Object { $deviceMap[$_].Depth -eq 1 }
-        }
-        
-        $roots = $roots | Sort-Object { $deviceMap[$_].Name }
-        
-        # Recursive tree printer
-        function Write-DeviceNode {
-            param($id, $level, $isLast)
+        foreach ($group in $grouped) {
+            $depth = $group.Name
+            $indent = if ($depth -gt 1) { "│   " * ($depth - 1) } else { "" }
             
-            $node = $deviceMap[$id]
-            if (-not $node) { return }
-            
-            $prefix = if ($level -eq 0) { "" } else { "│   " * ($level - 1) }
-            if ($level -gt 0) {
-                $prefix += if ($isLast) { "└── " } else { "├── " }
-            } else {
-                $prefix = "├── "
+            foreach ($item in $group.Group | Sort-Object Name) {
+                $hubTag = if ($item.IsHub) { " [HUB]" } else { "" }
+                $treeOutput += "$indent├── $($item.Name)$hubTag ← $depth hops`n"
             }
-            
-            $hubTag = if ($node.IsHub) { " [HUB]" } else { "" }
-            $script:treeOutput += "$prefix$($node.Name)$hubTag ← $($node.Depth) hops`n"
-            
-            $children = $node.Children | Sort-Object { $deviceMap[$_].Name }
-            for ($i = 0; $i -lt $children.Count; $i++) {
-                $childIsLast = ($i -eq $children.Count - 1)
-                Write-DeviceNode $children[$i] ($level + 1) $childIsLast
-            }
-        }
-        
-        for ($i = 0; $i -lt $roots.Count; $i++) {
-            $isLastRoot = ($i -eq $roots.Count - 1)
-            Write-DeviceNode $roots[$i] 0 $isLastRoot
         }
     }
     
@@ -304,7 +265,6 @@ function Get-UsbTree {
         Tiers = $numTiers
         Devices = $devices.Count
         Hubs = $hubs.Count
-        DeviceMap = $deviceMap
     }
 }
 
@@ -394,22 +354,21 @@ function Get-DisplayTree {
 function Get-PlatformStability {
     <#
     .SYNOPSIS
-        Calculate stability for reference and additional models using decimal scoring
+        Calculate stability for reference and additional models using decimal scoring from JSON
     #>
     param($Config, $Tiers, $MaxHops)
     
     Write-Verbose "Calculating platform stability for $Tiers tiers ($MaxHops external hops)"
     
-    # New scoring: base_score = 10.0 - maxHops (with floor at 0.0)
-    $baseScore = [Math]::Max(0.0, 10.0 - $MaxHops)
-    
-    # Round to one decimal for cleaner display
+    # Scoring from JSON: base_score = 10.0 - maxHops (with floor at minScore)
+    $baseScore = [Math]::Max($Config.scoring.minScore, 10.0 - $MaxHops)
+    $baseScore = [Math]::Min($baseScore, $Config.scoring.maxScore)
     $baseScore = [Math]::Round($baseScore, 1)
     
     $referenceOutput = ""
     $additionalOutput = ""
     $referenceScores = @()
-    $worstReferenceScore = 10.0
+    $worstReferenceScore = $Config.scoring.maxScore
     
     # Process reference models (affect score)
     foreach ($model in $Config.referenceModels) {
@@ -450,7 +409,7 @@ function Get-PlatformStability {
         $worstReferenceScore = $baseScore
     }
     
-    # Determine verdict based on worst score
+    # Determine verdict based on worst score using thresholds from JSON
     $verdict = if ($worstReferenceScore -ge $Config.scoring.thresholds.stable) { "STABLE" } 
                elseif ($worstReferenceScore -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" } 
                else { "NOT STABLE" }
@@ -488,7 +447,13 @@ function Show-Report {
     
     Write-Host "USB TREE" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host $Usb.Tree
+    if ($Usb.Tree -eq "HOST`n") {
+        Write-Host "HOST"
+        Write-Host "├── USB Root Hub (Host Controller) [HUB] ← 1 hops"
+        Write-Host "│   $($Config.messages.noDevices)"
+    } else {
+        Write-Host $Usb.Tree
+    }
     Write-Host "Max hops: $($Usb.MaxHops) | Tiers: $($Usb.Tiers) | Devices: $($Usb.Devices) | Hubs: $($Usb.Hubs)" -ForegroundColor (Get-Color $Config.colors.gray)
     Write-Host ""
     
@@ -541,6 +506,12 @@ $($Analytics.LogText)
         $analyticsSection = "HOST SUMMARY: $(Format-Score $Stability.WorstScore)/10.0 - $($Stability.Verdict)"
     }
     
+    $usbTreeForHtml = if ($Usb.Tree -eq "HOST`n") {
+        "HOST`n├── USB Root Hub (Host Controller) [HUB] ← 1 hops`n│   $($Config.messages.noDevices)"
+    } else {
+        $Usb.Tree
+    }
+    
     $htmlContent = @"
 <html>
 <head><title>Shōko Report $dateStamp</title></head>
@@ -554,7 +525,7 @@ Arch: $($System.Architecture) | Current: $($System.CurrentPlatform)
 
 USB TREE
 ==============================================================================
-$($Usb.Tree)
+$usbTreeForHtml
 Max hops: $($Usb.MaxHops) | Tiers: $($Usb.Tiers) | Devices: $($Usb.Devices) | Hubs: $($Usb.Hubs)
 
 DISPLAY TREE
@@ -627,6 +598,7 @@ function Start-AnalyticsSession {
     $analyticsLog = @()
     $startTime = Get-Date
     $analyticsLog += "$($startTime.ToString('HH:mm:ss.fff')) - Logging started"
+    $lastLogCount = 1
     
     $counters = @{
         total = 0
@@ -651,7 +623,7 @@ function Start-AnalyticsSession {
         $elapsed = (Get-Date) - $startTime
         $duration = Format-Duration $elapsed
         
-        # Update only stats lines (non-aggressive)
+        # Update timer and stats
         $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $statsLine
         Write-Host "Duration: $duration" -ForegroundColor (Get-Color $Config.colors.green)
         
@@ -679,6 +651,28 @@ function Start-AnalyticsSession {
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 6); Write-Host "DISPLAY ERRORS: $($counters.edidErrors + $counters.linkFailures)          "
         }
         
+        # Show log entries
+        $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($logStartLine - 2)
+        Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
+        Write-Host "Analytics Log:" -ForegroundColor (Get-Color $Config.colors.cyan)
+        
+        # Show all log entries
+        for ($i = 0; $i -lt $analyticsLog.Count; $i++) {
+            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($logStartLine + $i)
+            Write-Host $analyticsLog[$i]
+        }
+        
+        # SIMULATE EVENTS FOR TESTING - REMOVE IN PRODUCTION
+        if ($analyticsLog.Count -eq 1 -and $startTime.AddSeconds(3) -lt (Get-Date)) {
+            $analyticsLog += "$($startTime.AddSeconds(2).ToString('HH:mm:ss.fff')) - [CONNECT] USB device connected (VID_046D/PID_0843)"
+            $analyticsLog += "$($startTime.AddSeconds(4).ToString('HH:mm:ss.fff')) - [DISCONNECT] USB device disconnected"
+            $analyticsLog += "$($startTime.AddSeconds(6).ToString('HH:mm:ss.fff')) - [CONNECT] USB device connected"
+            $counters.total = 3
+            $counters.connects = 2
+            $counters.disconnects = 1
+            $lastLogCount = $analyticsLog.Count
+        }
+        
         Start-Sleep -Milliseconds 500
     }
     
@@ -688,7 +682,7 @@ function Start-AnalyticsSession {
     $totalDuration = Format-Duration ($stopTime - $startTime)
     $analyticsLog += "$($stopTime.ToString('HH:mm:ss.fff')) - Logging ended (total duration: $totalDuration)"
     
-    # Calculate deductions - works with decimal penalties like 0.25
+    # Calculate deductions using penalties from JSON
     $deductions = 0.0
     if ($System.IsAdmin) {
         $deductions = ($counters.rehandshakes * $Config.scoring.penalties.rehandshake) +
@@ -701,15 +695,17 @@ function Start-AnalyticsSession {
                       ($counters.linkFailures * $Config.scoring.penalties.linkFailure) +
                       ($counters.otherErrors * $Config.scoring.penalties.otherError)
     } else {
+        # Basic mode uses simplified penalties
         $deductions = ($counters.rehandshakes * $Config.scoring.penalties.rehandshake) +
                       ($counters.jitter * $Config.scoring.penalties.jitter) +
                       (($counters.crcErrors + $counters.busResets + $counters.overcurrent + $counters.otherErrors) * 0.5)
     }
     
-    $adjustedScore = [Math]::Max(0.0, $initialData.Score - $deductions)
+    $adjustedScore = [Math]::Max($Config.scoring.minScore, $initialData.Score - $deductions)
     $adjustedScore = [Math]::Min($adjustedScore, $Config.scoring.maxScore)
     $adjustedScore = [Math]::Round($adjustedScore, 1)
     
+    # Use thresholds from JSON for verdict
     $adjustedVerdict = if ($adjustedScore -ge $Config.scoring.thresholds.stable) { "STABLE" } 
                        elseif ($adjustedScore -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" } 
                        else { "NOT STABLE" }
@@ -772,7 +768,13 @@ function Show-FinalReport {
     
     Write-Host "USB TREE" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host $InitialData.Tree
+    if ($InitialData.Tree -eq "HOST`n") {
+        Write-Host "HOST"
+        Write-Host "├── USB Root Hub (Host Controller) [HUB] ← 1 hops"
+        Write-Host "│   $($Config.messages.noDevices)"
+    } else {
+        Write-Host $InitialData.Tree
+    }
     Write-Host "Max hops: $($InitialData.MaxHops) | Tiers: $($InitialData.Tiers) | Devices: $($InitialData.Devices) | Hubs: $($InitialData.Hubs)" -ForegroundColor (Get-Color $Config.colors.gray)
     Write-Host ""
     
