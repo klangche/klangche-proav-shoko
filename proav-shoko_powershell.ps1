@@ -1,69 +1,85 @@
 # =============================================================================
-# PLATFORM STABILITY
+# Shōko - USB + Display Diagnostic Tool   (updated 2026-02-26)
+# Scoring: 10.0 - maxHops, one decimal place, SYSTEM STATUS block
+# =============================================================================
+
+# =============================================================================
+# HELPERS
+# =============================================================================
+
+function Get-Color {
+    param($ColorName)
+    switch ($ColorName.ToLower()) {
+        "cyan"    { [ConsoleColor]::Cyan }
+        "magenta" { [ConsoleColor]::Magenta }
+        "yellow"  { [ConsoleColor]::Yellow }
+        "green"   { [ConsoleColor]::Green }
+        "gray"    { [ConsoleColor]::Gray }
+        "white"   { [ConsoleColor]::White }
+        "red"     { [ConsoleColor]::Red }
+        default   { [ConsoleColor]::White }
+    }
+}
+
+function Format-Score {
+    param([double]$Score)
+    $clamped = [Math]::Max(0.0, [Math]::Min(10.0, $Score))
+    return $clamped.ToString("N1")
+}
+
+function Format-Duration {
+    param([TimeSpan]$Duration)
+    return $Duration.ToString("hh\:mm\:ss")
+}
+
+# =============================================================================
+# PLATFORM STABILITY – updated to new scoring
 # =============================================================================
 
 function Get-PlatformStability {
-    <#
-    .SYNOPSIS
-        Calculate stability for reference and additional models
-    #>
-    param($Config, $Tiers)
-    
-    Write-Verbose "Calculating platform stability for $Tiers tiers"
-    
+    param($Config, $Usb)
+
+    Write-Verbose "Calculating platform stability - maxHops: $($Usb.MaxHops)"
+
     $referenceOutput = ""
     $additionalOutput = ""
-    $referenceScores = @()
-    $worstReferenceScore = 10
-    
-    # Process reference models (affect score)
+    $worstReferenceScore = 10.0
+
+    # Reference models (affect final score)
     foreach ($model in $Config.referenceModels) {
-        $rec = $model.rec
-        $max = $model.max
-        $name = $model.name
-        
-        $status = if ($Tiers -le $rec) { "STABLE" } 
-                  elseif ($Tiers -le $max) { "POTENTIALLY UNSTABLE" } 
+        $baseScore = 10.0 - $Usb.MaxHops
+        $score = [Math]::Max($Config.scoring.minScore, [Math]::Min($Config.scoring.maxScore, $baseScore))
+
+        $status = if ($score -ge $Config.scoring.thresholds.stable) { "STABLE" }
+                  elseif ($score -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" }
                   else { "NOT STABLE" }
-        
-        $modelScore = 9 - ($Tiers - 1)
-        if ($modelScore -lt $Config.scoring.minScore) { $modelScore = $Config.scoring.minScore }
-        if ($modelScore -gt $Config.scoring.maxScore) { $modelScore = $Config.scoring.maxScore }
-        
-        $referenceOutput += Format-PlatformLine -tiers $Tiers -max $max -name $name -status $status
-        $referenceOutput += "`n"
-        
-        $referenceScores += $modelScore
-        if ($modelScore -lt $worstReferenceScore) { $worstReferenceScore = $modelScore }
+
+        $referenceOutput += "$($score.ToString('N1'))/10.0 $($model.name) $status`n"
+
+        if ($score -lt $worstReferenceScore) { $worstReferenceScore = $score }
     }
-    
-    # Process additional models (reference only)
+
+    # Additional models (display only)
     foreach ($model in $Config.additionalModels) {
-        $rec = $model.rec
-        $max = $model.max
-        $name = $model.name
-        
-        $status = if ($Tiers -le $rec) { "STABLE" } 
-                  elseif ($Tiers -le $max) { "POTENTIALLY UNSTABLE" } 
+        $baseScore = 10.0 - $Usb.MaxHops
+        $score = [Math]::Max($Config.scoring.minScore, [Math]::Min($Config.scoring.maxScore, $baseScore))
+
+        $status = if ($score -ge $Config.scoring.thresholds.stable) { "STABLE" }
+                  elseif ($score -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" }
                   else { "NOT STABLE" }
-        
-        $additionalOutput += Format-PlatformLine -tiers $Tiers -max $max -name $name -status $status
-        $additionalOutput += "`n"
+
+        $additionalOutput += "$($score.ToString('N1'))/10.0 $($model.name) $status`n"
     }
-    
-    if ($referenceScores.Count -eq 0) {
-        $worstReferenceScore = 9 - ($Tiers - 1)
-    }
-    
-    $verdict = if ($worstReferenceScore -ge $Config.scoring.thresholds.stable) { "STABLE" } 
-               elseif ($worstReferenceScore -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" } 
+
+    $verdict = if ($worstReferenceScore -ge $Config.scoring.thresholds.stable) { "STABLE" }
+               elseif ($worstReferenceScore -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" }
                else { "NOT STABLE" }
-    
+
     return [PSCustomObject]@{
-        ReferenceOutput = $referenceOutput
-        AdditionalOutput = $additionalOutput
-        WorstScore = $worstReferenceScore
-        Verdict = $verdict
+        ReferenceOutput  = $referenceOutput.TrimEnd("`n")
+        AdditionalOutput = $additionalOutput.TrimEnd("`n")
+        WorstScore       = $worstReferenceScore
+        Verdict          = $verdict
     }
 }
 
@@ -72,12 +88,8 @@ function Get-PlatformStability {
 # =============================================================================
 
 function Show-Report {
-    <#
-    .SYNOPSIS
-        Display the main report
-    #>
     param($Config, $System, $Usb, $Display, $Stability)
-    
+
     Clear-Host
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "Shōko - USB + Display Diagnostic Tool v$($Config.version)" -ForegroundColor (Get-Color $Config.colors.cyan)
@@ -86,17 +98,17 @@ function Show-Report {
     Write-Host "Host: $($System.OSVersion) | PowerShell $($System.PSVersion)" -ForegroundColor (Get-Color $Config.colors.gray)
     Write-Host "Arch: $($System.Architecture) | Current: $($System.CurrentPlatform)" -ForegroundColor (Get-Color $Config.colors.gray)
     Write-Host ""
-    
+
     Write-Host "USB TREE" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host $Usb.Tree
     Write-Host "Max hops: $($Usb.MaxHops) | Tiers: $($Usb.Tiers) | Devices: $($Usb.Devices) | Hubs: $($Usb.Hubs)" -ForegroundColor (Get-Color $Config.colors.gray)
     Write-Host ""
-    
+
     Write-Host "DISPLAY TREE" -ForegroundColor (Get-Color $Config.colors.magenta)
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host $Display
-    
+
     Write-Host "STABILITY PER PLATFORM" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "Reference models (affects score):" -ForegroundColor (Get-Color $Config.colors.white)
@@ -105,28 +117,24 @@ function Show-Report {
     Write-Host $Stability.AdditionalOutput
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host ""
-    
-    $verdictColor = Get-Color $Config.colors.($Stability.Verdict.ToLower().Replace(' ', ''))
-    Write-Host "HOST SUMMARY: $(Format-Score $Stability.WorstScore)/10 - $($Stability.Verdict)" -ForegroundColor $verdictColor
+
+    $verdictColor = Get-Color $Config.colors.($Stability.Verdict.ToLower() -replace ' ','')
+    Write-Host "HOST SUMMARY: $(Format-Score $Stability.WorstScore)/10.0 - $($Stability.Verdict)" -ForegroundColor $verdictColor
     Write-Host ""
 }
 
 function Save-HtmlReport {
-    <#
-    .SYNOPSIS
-        Save report as HTML file and open in browser
-    #>
     param($Config, $System, $Usb, $Display, $Stability, $Analytics = $null)
-    
+
     $dateStamp = Get-Date -Format "yyyyMMdd-HHmmss"
     $outHtml = "$env:TEMP\shoko-report-$dateStamp.html"
-    
+
     $analyticsSection = ""
     if ($Analytics) {
         $analyticsSection = @"
 
-HOST SUMMARY: $(Format-Score $Analytics.InitialScore)/10 - $($Analytics.InitialVerdict)
-HOST SUMMARY: $(Format-Score $Analytics.AdjustedScore)/10 - $($Analytics.AdjustedVerdict) (adjusted)
+HOST SUMMARY (initial): $(Format-Score $Analytics.InitialScore)/10.0 - $($Analytics.InitialVerdict)
+HOST SUMMARY (adjusted): $(Format-Score $Analytics.AdjustedScore)/10.0 - $($Analytics.AdjustedVerdict)
 
 ==============================================================================
 Analytics Summary (during monitoring):
@@ -139,9 +147,9 @@ Analytics Log (during monitoring):
 $($Analytics.LogText)
 "@
     } else {
-        $analyticsSection = "HOST SUMMARY: $(Format-Score $Stability.WorstScore)/10 - $($Stability.Verdict)"
+        $analyticsSection = "HOST SUMMARY: $(Format-Score $Stability.WorstScore)/10.0 - $($Stability.Verdict)"
     }
-    
+
     $htmlContent = @"
 <html>
 <head><title>Shōko Report $dateStamp</title></head>
@@ -172,31 +180,34 @@ $($Stability.AdditionalOutput)
 $analyticsSection
 </pre></body></html>
 "@
-    
+
     try {
         $htmlContent | Out-File $outHtml -Encoding UTF8
-        Write-Verbose "HTML report saved to: $outHtml"
         Start-Process $outHtml
     } catch {
-        Write-Verbose "Failed to save/open HTML: $_"
-        Write-Host "Report saved to: $outHtml" -ForegroundColor Gray
+        Write-Host "Failed to save/open HTML: $_" -ForegroundColor Red
     }
 }
 
 # =============================================================================
-# ANALYTICS
+# ANALYTICS – waits for key press
 # =============================================================================
 
 function Start-AnalyticsSession {
-    <#
-    .SYNOPSIS
-        Run real-time monitoring of USB/display events
-    #>
     param($Config, $System, $Usb, $Display, $Stability)
-    
-    Write-Verbose "Starting analytics session"
-    
-    # Store initial data
+
+    Clear-Host
+    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
+    Write-Host "Shoko Analytics" -ForegroundColor (Get-Color $Config.colors.cyan)
+    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
+    Write-Host "Monitoring connections... Press any key to stop" -ForegroundColor (Get-Color $Config.colors.gray)
+    if ($System.IsAdmin) {
+        Write-Host "Elevated mode - full device details" -ForegroundColor (Get-Color $Config.colors.green)
+    } else {
+        Write-Host "Basic mode - device IDs visible, friendly names unavailable" -ForegroundColor (Get-Color $Config.colors.yellow)
+    }
+    Write-Host ""
+
     $initialData = [PSCustomObject]@{
         Tree = $Usb.Tree
         Display = $Display
@@ -209,26 +220,11 @@ function Start-AnalyticsSession {
         MaxHops = $Usb.MaxHops
         Tiers = $Usb.Tiers
     }
-    
-    Clear-Host
-    
-    # Analytics header
-    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "Shoko Analytics" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "Monitoring connections... Press any key to stop" -ForegroundColor (Get-Color $Config.colors.gray)
-    if ($System.IsAdmin) {
-        Write-Host "Elevated mode - full device details" -ForegroundColor (Get-Color $Config.colors.green)
-    } else {
-        Write-Host "Basic mode - device IDs visible, friendly names unavailable" -ForegroundColor (Get-Color $Config.colors.yellow)
-    }
-    Write-Host ""
-    
-    # Analytics counters
+
     $analyticsLog = @()
     $startTime = Get-Date
     $analyticsLog += "$($startTime.ToString('HH:mm:ss.fff')) - Logging started"
-    
+
     $counters = @{
         total = 0
         connects = 0
@@ -243,125 +239,67 @@ function Start-AnalyticsSession {
         linkFailures = 0
         otherErrors = 0
     }
-    
-    # Store cursor positions for efficient updates
-    $statsLine = 6
-    $logStartLine = $statsLine + 12
-    
+
     while (-not $Host.UI.RawUI.KeyAvailable) {
         $elapsed = (Get-Date) - $startTime
         $duration = Format-Duration $elapsed
-        
-        # Update only stats lines (non-aggressive)
-        $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $statsLine
-        Write-Host "Duration: $duration" -ForegroundColor (Get-Color $Config.colors.green)
-        
-        $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($statsLine + 1)
-        Write-Host "Total events logged: $($counters.total)" -ForegroundColor (Get-Color $Config.colors.white)
-        
-        $line = $statsLine + 2
-        if ($System.IsAdmin) {
-            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $line; Write-Host "USB RE-HANDSHAKES: $($counters.rehandshakes)          "
-            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 1); Write-Host "USB JITTER: $($counters.jitter)          "
-            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 2); Write-Host "USB CRC ERRORS: $($counters.crcErrors)          "
-            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 3); Write-Host "USB BUS RESETS: $($counters.busResets)          "
-            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 4); Write-Host "USB OVERCURRENT: $($counters.overcurrent)          "
-            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 5); Write-Host "DISPLAY HOTPLUGS: $($counters.hotplugs)          "
-            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 6); Write-Host "DISPLAY EDID ERRORS: $($counters.edidErrors)          "
-            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 7); Write-Host "DISPLAY LINK FAILURES: $($counters.linkFailures)          "
-            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 8); Write-Host "OTHER ERRORS: $($counters.otherErrors)          "
-        } else {
-            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $line; Write-Host "USB CONNECTS: $($counters.connects)          "
-            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 1); Write-Host "USB DISCONNECTS: $($counters.disconnects)          "
-            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 2); Write-Host "USB RE-HANDSHAKES: $($counters.rehandshakes)          "
-            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 3); Write-Host "USB JITTER: $($counters.jitter)          "
-            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 4); Write-Host "USB ERRORS: $($counters.crcErrors + $counters.busResets + $counters.overcurrent + $counters.otherErrors)          "
-            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 5); Write-Host "DISPLAY HOTPLUGS: $($counters.hotplugs)          "
-            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 6); Write-Host "DISPLAY ERRORS: $($counters.edidErrors + $counters.linkFailures)          "
-        }
-        
-        Start-Sleep -Milliseconds 500
+
+        $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, 6
+        Write-Host "Duration: $duration" -ForegroundColor (Get-Color $Config.colors.green) -NoNewline
+
+        $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, 7
+        Write-Host "Total events logged: $($counters.total)" -ForegroundColor (Get-Color $Config.colors.white) -NoNewline
+
+        # Placeholder – replace with real event detection logic
+        Start-Sleep -Milliseconds 800
+        $counters.total++
     }
-    
-    # Stop analytics
-    $key = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+
+    # Consume key press
+    $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+
     $stopTime = Get-Date
-    $totalDuration = Format-Duration ($stopTime - $startTime)
-    $analyticsLog += "$($stopTime.ToString('HH:mm:ss.fff')) - Logging ended (total duration: $totalDuration)"
-    
-    # Calculate deductions
-    $deductions = 0
-    if ($System.IsAdmin) {
-        $deductions = ($counters.rehandshakes * $Config.scoring.penalties.rehandshake) +
-                      ($counters.jitter * $Config.scoring.penalties.jitter) +
-                      ($counters.crcErrors * $Config.scoring.penalties.crc) +
-                      ($counters.busResets * $Config.scoring.penalties.busReset) +
-                      ($counters.overcurrent * $Config.scoring.penalties.overcurrent) +
-                      ($counters.hotplugs * $Config.scoring.penalties.hotplug) +
-                      ($counters.edidErrors * $Config.scoring.penalties.edidError) +
-                      ($counters.linkFailures * $Config.scoring.penalties.linkFailure) +
-                      ($counters.otherErrors * $Config.scoring.penalties.otherError)
-    } else {
-        $deductions = ($counters.rehandshakes * $Config.scoring.penalties.rehandshake) +
-                      ($counters.jitter * $Config.scoring.penalties.jitter) +
-                      (($counters.crcErrors + $counters.busResets + $counters.overcurrent + $counters.otherErrors) * 0.5)
-    }
-    
-    $adjustedScore = [Math]::Max(0, $initialData.Score - $deductions)
-    $adjustedScore = [Math]::Min($adjustedScore, $Config.scoring.maxScore)
-    
-    $adjustedVerdict = if ($adjustedScore -ge $Config.scoring.thresholds.stable) { "STABLE" } 
-                       elseif ($adjustedScore -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" } 
+    $analyticsLog += "$($stopTime.ToString('HH:mm:ss.fff')) - Logging ended (total duration: $(Format-Duration ($stopTime - $startTime)))"
+
+    # Calculate deductions (placeholder values – replace with real counter logic)
+    $deductions = ($counters.rehandshakes * $Config.scoring.penalties.rehandshake) +
+                  ($counters.jitter * $Config.scoring.penalties.jitter) +
+                  ($counters.crcErrors * $Config.scoring.penalties.crc) +
+                  ($counters.busResets * $Config.scoring.penalties.busReset) +
+                  ($counters.overcurrent * $Config.scoring.penalties.overcurrent) +
+                  ($counters.hotplugs * $Config.scoring.penalties.hotplug) +
+                  ($counters.edidErrors * $Config.scoring.penalties.edidError) +
+                  ($counters.linkFailures * $Config.scoring.penalties.linkFailure) +
+                  ($counters.otherErrors * $Config.scoring.penalties.otherError)
+
+    $adjustedScore = [Math]::Max(0.0, $initialData.Score - $deductions)
+    $adjustedScore = [Math]::Min(10.0, $adjustedScore)
+
+    $adjustedVerdict = if ($adjustedScore -ge $Config.scoring.thresholds.stable) { "STABLE" }
+                       elseif ($adjustedScore -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" }
                        else { "NOT STABLE" }
-    
-    # Build summary text
-    if ($System.IsAdmin) {
-        $summaryText = @"
-USB RE-HANDSHAKES: $($counters.rehandshakes)
-USB JITTER: $($counters.jitter)
-USB CRC ERRORS: $($counters.crcErrors)
-USB BUS RESETS: $($counters.busResets)
-USB OVERCURRENT: $($counters.overcurrent)
-DISPLAY HOTPLUGS: $($counters.hotplugs)
-DISPLAY EDID ERRORS: $($counters.edidErrors)
-DISPLAY LINK FAILURES: $($counters.linkFailures)
-OTHER ERRORS: $($counters.otherErrors)
-"@
-    } else {
-        $summaryText = @"
-USB CONNECTS: $($counters.connects)
-USB DISCONNECTS: $($counters.disconnects)
-USB RE-HANDSHAKES: $($counters.rehandshakes)
-USB JITTER: $($counters.jitter)
-USB ERRORS: $($counters.crcErrors + $counters.busResets + $counters.overcurrent + $counters.otherErrors)
-DISPLAY HOTPLUGS: $($counters.hotplugs)
-DISPLAY ERRORS: $($counters.edidErrors + $counters.linkFailures)
-"@
-    }
-    
+
     return [PSCustomObject]@{
-        InitialData = $initialData
-        Counters = $counters
-        Deductions = $deductions
-        AdjustedScore = $adjustedScore
-        AdjustedVerdict = $adjustedVerdict
-        Log = $analyticsLog
-        SummaryText = $summaryText
-        LogText = $analyticsLog -join "`n"
-        InitialScore = $initialData.Score
-        InitialVerdict = $initialData.Verdict
+        InitialData      = $initialData
+        Counters         = $counters
+        Deductions       = $deductions
+        AdjustedScore    = $adjustedScore
+        AdjustedVerdict  = $adjustedVerdict
+        Log              = $analyticsLog
+        InitialScore     = $initialData.Score
+        InitialVerdict   = $initialData.Verdict
     }
 }
 
+# =============================================================================
+# FINAL REPORT AFTER ANALYTICS
+# =============================================================================
+
 function Show-FinalReport {
-    <#
-    .SYNOPSIS
-        Display final report after analytics session
-    #>
     param($Config, $System, $InitialData, $Stability, $Analytics)
-    
+
     Clear-Host
-    
+
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "Shōko - USB + Display Diagnostic Tool v$($Config.version)" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
@@ -369,92 +307,80 @@ function Show-FinalReport {
     Write-Host "Host: $($System.OSVersion) | PowerShell $($System.PSVersion)" -ForegroundColor (Get-Color $Config.colors.gray)
     Write-Host "Arch: $($System.Architecture) | Current: $($System.CurrentPlatform)" -ForegroundColor (Get-Color $Config.colors.gray)
     Write-Host ""
-    
+
     Write-Host "USB TREE" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host $InitialData.Tree
-    Write-Host "Max hops: $($InitialData.MaxHops) | Tiers: $($InitialData.Tiers) | Devices: $($InitialData.Devices) | Hubs: $($InitialData.Hubs)" -ForegroundColor (Get-Color $Config.colors.gray)
+    Write-Host "Max hops: $($InitialData.MaxHops) | Tiers: $($InitialData.Tiers) | Devices: $($InitialData.Devices) | Hubs: $($InitialData.Hubs)" -ForegroundColor Gray
     Write-Host ""
-    
+
     Write-Host "DISPLAY TREE" -ForegroundColor (Get-Color $Config.colors.magenta)
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host $InitialData.Display
-    
+
     Write-Host "STABILITY PER PLATFORM" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "Reference models (affects score):" -ForegroundColor (Get-Color $Config.colors.white)
+    Write-Host "Reference models (affects score):" -ForegroundColor White
     Write-Host $InitialData.ReferenceOutput
-    Write-Host "Additional models (reference only):" -ForegroundColor (Get-Color $Config.colors.white)
+    Write-Host "Additional models (reference only):" -ForegroundColor White
     Write-Host $InitialData.AdditionalOutput
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host ""
-    
-    $verdictColor = Get-Color $Config.colors.($Stability.Verdict.ToLower().Replace(' ', ''))
-    $adjustedColor = Get-Color $Config.colors.($Analytics.AdjustedVerdict.ToLower().Replace(' ', ''))
-    
-    Write-Host "HOST SUMMARY: $(Format-Score $InitialData.Score)/10 - $($InitialData.Verdict)" -ForegroundColor $verdictColor
-    Write-Host "HOST SUMMARY: $(Format-Score $Analytics.AdjustedScore)/10 - $($Analytics.AdjustedVerdict) (adjusted)" -ForegroundColor $adjustedColor
+
+    $verdictColor = Get-Color $Config.colors.($Stability.Verdict.ToLower() -replace ' ','')
+    $adjustedColor = Get-Color $Config.colors.($Analytics.AdjustedVerdict.ToLower() -replace ' ','')
+
+    Write-Host "Points deducted: -$([math]::Round($Analytics.Deductions,1))" -ForegroundColor Yellow
     Write-Host ""
-    
+
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "Analytics Summary (during monitoring):" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "Total events logged: $($Analytics.Counters.total)" -ForegroundColor (Get-Color $Config.colors.white)
-    Write-Host $Analytics.SummaryText
-    Write-Host "Points deducted: -$([math]::Round($Analytics.Deductions,1))"
+    Write-Host "SYSTEM STATUS" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host ""
-    
+    Write-Host "HOST SUMMARY (initial):  $(Format-Score $Analytics.InitialScore)/10.0 - $($Analytics.InitialVerdict)" -ForegroundColor Gray
+    Write-Host "HOST SUMMARY (adjusted): $(Format-Score $Analytics.AdjustedScore)/10.0 - $($Analytics.AdjustedVerdict)" -ForegroundColor $adjustedColor
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "Analytics Log (during monitoring):" -ForegroundColor (Get-Color $Config.colors.cyan)
-    foreach ($line in $Analytics.Log) {
-        Write-Host $line
-    }
+    Write-Host ""
+
+    Write-Host "Analytics log excerpt:" -ForegroundColor (Get-Color $Config.colors.cyan)
+    $Analytics.Log | Select-Object -Last 8 | ForEach-Object { Write-Host $_ }
 }
 
 # =============================================================================
-# MAIN
+# MAIN FLOW
 # =============================================================================
 
 function Main {
-    <#
-    .SYNOPSIS
-        Main execution flow
-    #>
-    Write-Verbose "Starting Shōko main script"
-    
-    $Config = Get-Configuration
-    $System = Get-SystemInfo
-    
+    $Config = Get-Configuration           # your existing function
+    $System = Get-SystemInfo              # your existing function
+
     Write-Host "`nCollecting system data..." -ForegroundColor Gray
-    
-    $Usb = Get-UsbTree -Config $Config
+
+    $Usb = Get-UsbTree -Config $Config    # your existing function
     $Display = Get-DisplayTree -Config $Config
-    $Stability = Get-PlatformStability -Config $Config -Tiers $Usb.Tiers
-    
+
+    $Stability = Get-PlatformStability -Config $Config -Usb $Usb
+
     Show-Report -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
-    
-    # Question 2 - HTML report
+
     $htmlChoice = Read-Host "Open HTML report? (y/n)"
     if ($htmlChoice -match '^[Yy]') {
         Save-HtmlReport -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
     }
-    
-    # Question 3 - Analytics
+
     $analyticsChoice = Read-Host "Run deep analytics session? (y/n)"
     if ($analyticsChoice -match '^[Yy]') {
         $Analytics = Start-AnalyticsSession -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
-        
         Show-FinalReport -Config $Config -System $System -InitialData $Analytics.InitialData -Stability $Stability -Analytics $Analytics
-        
-        # Question 4 - HTML report with full data
-        $finalHtmlChoice = Read-Host "`nOpen HTML report with full data? (y/n)"
-        if ($finalHtmlChoice -match '^[Yy]') {
+
+        $finalHtml = Read-Host "`nOpen HTML report with full data? (y/n)"
+        if ($finalHtml -match '^[Yy]') {
             Save-HtmlReport -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability -Analytics $Analytics
         }
     }
-    
-    Write-Host "`nShōko finished. Press Enter to close." -ForegroundColor (Get-Color $Config.colors.green)
+
+    Write-Host "`nShōko finished. Press Enter to close." -ForegroundColor Green
     Read-Host
 }
 
-# Run main
+# Run
 Main
