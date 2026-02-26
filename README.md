@@ -92,47 +92,31 @@ Repository: klangche/usb-script
 
 ```mermaid
 graph TD
-    Start([Start]) --> A[Calculate Base Score<br>Base ]
-    A --> B{Run Deep Analytics?}
-    
-    B -->|No| C[Display Tree + Status<br>Based on Hops Only]
-    C --> End([End])
-    
-    B -->|Yes| D[Start Monitoring<br>Collect Errors]
-    D --> E{Any Errors<br>Detected?}
-    
-    E -->|Yes| F[<strong>NOT STABLE</strong><br>←OVERRIDE→]
-    style F stroke:#ff00ff,stroke-width:3px,fill:none
-    
-    E -->|No| G[Apply Penalties<br>Final Score = Base - Penalties]
-    G --> H{Check Final Score}
-    
-    H --> I[<strong>STABLE</strong>]
-    style I stroke:#00ff00,stroke-width:3px,fill:none
-    
-    H --> J[<strong>POTENTIALLY UNSTABLE</strong>]
-    style J stroke:#ffff00,stroke-width:3px,fill:none
-    
-    H --> K[<strong>NOT STABLE</strong>]
-    style K stroke:#ff00ff,stroke-width:3px,fill:none
-    
-    F --> L[Show Complete Report<br>Tree + Analytics Summary]
-    I --> L
-    J --> L
-    K --> L
-    
-    L --> End
+    Start --> Admin{Admin?}
 
-    style A fill:none,stroke:#666,stroke-width:1px
-    style B fill:none,stroke:#666,stroke-width:1px
-    style C fill:none,stroke:#666,stroke-width:1px
-    style D fill:none,stroke:#666,stroke-width:1px
-    style E fill:none,stroke:#666,stroke-width:1px
-    style G fill:none,stroke:#666,stroke-width:1px
-    style H fill:none,stroke:#666,stroke-width:1px
-    style L fill:none,stroke:#666,stroke-width:1px
-    style Start fill:none,stroke:#666,stroke-width:1px
-    style End fill:none,stroke:#666,stroke-width:1px
+    Admin --> Basic[Basic]
+    Admin --> Full[Elevated]
+
+    Basic --> Tree
+    Full  --> Tree
+
+    Tree[USB + Display Tree] --> Base[Base Score]
+    Base --> Platforms[Platform verdicts]
+    Platforms --> Analytics{Analytics?}
+
+    Analytics -->|No| Report[Final report]
+    Analytics -->|Yes| Monitor[Monitor errors]
+
+    Monitor --> Penalties[Penalties]
+    Penalties --> Override{Override}
+
+    Override -->|Yes| Force[Force NOT STABLE]
+    Override -->|No| Adjusted[Adjusted verdict]
+
+    Force        --> Report
+    Adjusted     --> Report
+
+    Report[Final report] --> End
 ```
 
 # Mac & Linux
