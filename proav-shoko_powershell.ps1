@@ -1,6 +1,6 @@
 # =============================================================================
 # Shōko - USB + Display Diagnostic Tool v1.1.0
-# Full USB tree printing, Gray color fix, basic mode counters message
+# Fixes: no early HTML prompt, USB tree always shows HOST + tree or fallback
 # =============================================================================
 
 # =============================================================================
@@ -80,7 +80,7 @@ function Get-PlatformStability {
 }
 
 # =============================================================================
-# REPORTING
+# REPORTING – USB tree always has HOST line
 # =============================================================================
 
 function Show-Report {
@@ -97,11 +97,10 @@ function Show-Report {
 
     Write-Host "USB TREE" -ForegroundColor Cyan
     Write-Host "==============================================================================" -ForegroundColor Cyan
+    Write-Host "HOST"
     if ([string]::IsNullOrWhiteSpace($Usb.Tree) -or $Usb.Devices -eq 0) {
-        Write-Host "HOST"
         Write-Host "└── Nothing detected"
     } else {
-        Write-Host "HOST"
         Write-Host $Usb.Tree
     }
     Write-Host "Max hops: $($Usb.MaxHops) | Tiers: $($Usb.Tiers) | Devices: $($Usb.Devices) | Hubs: $($Usb.Hubs)" -ForegroundColor Gray
@@ -109,11 +108,10 @@ function Show-Report {
 
     Write-Host "DISPLAY TREE" -ForegroundColor Magenta
     Write-Host "==============================================================================" -ForegroundColor Cyan
+    Write-Host "HOST"
     if ([string]::IsNullOrWhiteSpace($Display)) {
-        Write-Host "HOST"
         Write-Host "└── Nothing detected"
     } else {
-        Write-Host "HOST"
         Write-Host $Display
     }
     Write-Host ""
@@ -268,11 +266,10 @@ function Show-FinalReport {
 
     Write-Host "USB TREE" -ForegroundColor Cyan
     Write-Host "==============================================================================" -ForegroundColor Cyan
+    Write-Host "HOST"
     if ([string]::IsNullOrWhiteSpace($InitialData.Tree) -or $InitialData.Devices -eq 0) {
-        Write-Host "HOST"
         Write-Host "└── Nothing detected"
     } else {
-        Write-Host "HOST"
         Write-Host $InitialData.Tree
     }
     Write-Host "Max hops: $($InitialData.MaxHops) | Tiers: $($InitialData.Tiers) | Devices: $($InitialData.Devices) | Hubs: $($InitialData.Hubs)" -ForegroundColor Gray
@@ -280,11 +277,10 @@ function Show-FinalReport {
 
     Write-Host "DISPLAY TREE" -ForegroundColor Magenta
     Write-Host "==============================================================================" -ForegroundColor Cyan
+    Write-Host "HOST"
     if ([string]::IsNullOrWhiteSpace($InitialData.Display)) {
-        Write-Host "HOST"
         Write-Host "└── Nothing detected"
     } else {
-        Write-Host "HOST"
         Write-Host $InitialData.Display
     }
     Write-Host ""
@@ -333,7 +329,7 @@ function Show-FinalReport {
 }
 
 # =============================================================================
-# MAIN (your original structure)
+# MAIN – HTML prompt only AFTER analytics or at end
 # =============================================================================
 
 function Main {
@@ -348,19 +344,23 @@ function Main {
 
     Show-Report -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
 
-    $htmlChoice = Read-Host "Open HTML report? (y/n)"
-    if ($htmlChoice -match '^[Yy]') {
-        Save-HtmlReport -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
-    }
+    # NO HTML prompt here anymore
 
     $analyticsChoice = Read-Host "Run deep analytics session? (y/n)"
     if ($analyticsChoice -match '^[Yy]') {
         $Analytics = Start-AnalyticsSession -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
         Show-FinalReport -Config $Config -System $System -InitialData $Analytics.InitialData -Stability $Stability -Analytics $Analytics
 
+        # HTML prompt only AFTER analytics
         $finalHtml = Read-Host "`nOpen HTML report with full data? (y/n)"
         if ($finalHtml -match '^[Yy]') {
             Save-HtmlReport -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability -Analytics $Analytics
+        }
+    } else {
+        # If no analytics → ask for HTML at the very end
+        $htmlChoice = Read-Host "Open HTML report? (y/n)"
+        if ($htmlChoice -match '^[Yy]') {
+            Save-HtmlReport -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
         }
     }
 
