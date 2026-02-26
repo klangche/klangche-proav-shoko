@@ -5,22 +5,22 @@
 
 
 # Kangche ProAV Shōko - your ProAV detective<br> 証拠 - Shōko - Proof / Evidence / Clarity
-
-- Analyze, verify, and **expose device or connection issues** in meeting rooms and BYOD setups.
-- No excuses. No guessing. Just proof.
-- Inspection / analysis / evidence
-
-
-Windows:
 ```powershell
 irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1 | iex
 ```
+- Analyze, verify, and expose device or connection issues in meeting rooms and BYOD setups
+- Inspect and generate evidence for troubleshooting
+- Visualize full USB tree structure
+- Count hops and tiers in USB chains
+- Assess chain stability, highlighting potential problems
+- Designed for corporate AV and BYOD environments
+
 
 
 
 ## HOW TO USE THE TOOL
-1. Copy and Paste above command into **PowerShell** 
-2. Run in basic mode or Elevated mode* (y/n)
+1. Copy,  Paste, run command into **PowerShell** 
+2. script asks to run in basic mode or Elevated mode* (y/n)
 3. Displaying result
 4. View result in browser? (copy-paste ready) (y/n)
 5. Run Analytics (y/n)
@@ -30,19 +30,21 @@ irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-s
 
 *Elevated = Administrator privileges
 
-## Security note
-The install command uses standard PowerShell shortcuts:
-**irm** downloads the script from GitHub into memory.
-**iex** runs it in your current PowerShell session.
-**Nothing is installed and no data leaves your machine.**
-The tool only **reads** local USB information and generates a local report.
 
-You can review the full source before running:
+
+## Security note
+The install command uses standard PowerShell shortcuts:<br>
+**irm** downloads the script from GitHub into memory.<br>
+**iex** runs it in your current PowerShell session.<br>
+**Nothing is installed and no data leaves your machine.**<br>
+The tool only **reads** local USB information and generates a local report.<br>
+
+You can review the full source before running:<br>
 https://github.com/klangche/klangche-proav-shoko
 
 
 
-A lightweight USB diagnostics tool to quickly visualize USB tree structure, count hops/tiers, and assess chain stability — especially useful in corporate BYOD meeting rooms and AV setups.
+
 
 # Why this tool matters in AV environments
 In modern conference rooms we often see:
@@ -71,8 +73,6 @@ This tool helps technicians prove:
 - **Deep Analytics mode** (Elevated only): real-time monitoring of USB connect/disconnect events, re-handshakes, random errors
 - Asks smart questions only once: Elevated? open report?
 
-# Mac & Linux
-Support for macOS and Linux is planned.
 
 For AV field use we still recommend Windows laptop as primary diagnostic station — most reliable experience.
 Questions / feature requests → open issue.
@@ -85,6 +85,7 @@ Repository: klangche/usb-script
 ├── proav-shoko.sh                   # macOS script 
 └── proav-shoko.json                  # Central configuration
 ```
+
 
 
 ### Rating logic
@@ -134,3 +135,5 @@ graph TD
     style End fill:none,stroke:#666,stroke-width:1px
 ```
 
+# Mac & Linux
+Support for macOS and Linux is planned.
