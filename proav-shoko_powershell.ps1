@@ -211,9 +211,9 @@ function Get-UsbTree {
     $deviceMap = @{}
     
     if ($allDevices.Count -eq 0) {
-        $treeOutput += "├── USB Root Hub (Host Controller) [HUB] ← 1 hops`n"
-        $treeOutput += "│   └── No USB devices connected`n"
-        $maxHops = 1
+    $treeOutput += "├── USB Root Hub (Host Controller) [HUB] ← 1 hops`n"
+    $treeOutput += "│   $($Config.messages.noDevices)`n"
+    $maxHops = 1
     } else {
         foreach ($d in $allDevices) {
             $isHub = ($d.FriendlyName -like "*hub*") -or ($d.Name -like "*hub*") -or ($d.Class -eq "USBHub")
@@ -373,7 +373,7 @@ function Get-DisplayTree {
             $displayOutput += "`n"
         }
     } else {
-        $displayOutput += "└── No displays detected`n"
+        $displayOutput += "└── $($Config.messages.noDevices)`n"
     }
     
     return $displayOutput
@@ -843,3 +843,4 @@ function Main {
 
 # Run main
 Main
+
