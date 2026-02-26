@@ -1,4 +1,4 @@
-# proav-shoko.ps1 - Shōko Launcher (works in PowerShell 5.1 and 7+)
+# proav-shoko.ps1 - Shōko Launcher
 
 $Repo = "klangche/klangche-proav-shoko"
 $Branch = "main"
@@ -13,7 +13,7 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
 
 if (-not $isAdmin) {
     Write-Host "Limited mode – full features require Administrator rights." -ForegroundColor Yellow
-    $elevate = Read-Host "Elevate now? (y/n)"
+    $elevate = Read-Host "Run with administrator privileges? (y/n)"
     if ($elevate -match '^[Yy]') {
         $temp = "$env:TEMP\shoko-elevated.ps1"
         Invoke-RestMethod "$Base/proav-shoko_powershell.ps1" | Out-File $temp -Encoding UTF8
