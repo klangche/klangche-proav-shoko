@@ -39,19 +39,22 @@ function Load-Configuration {
     
     while ($retryCount -lt $maxRetries) {
         $retryCount++
-        Write-Host "[Attempt $retryCount of $maxRetries] Loading config from GitHub..." -ForegroundColor Gray
+        Write-Host "[Attempt $retryCount of $maxRetries] Loading config from GitHub..." -ForegroundColor Gray -NoNewline
+        Write-Host " 🔄" -ForegroundColor Yellow
         
         try {
             $config = Invoke-RestMethod $configUrl
+            Write-Host "`r[Attempt $retryCount of $maxRetries] Loading config from GitHub... ✓" -ForegroundColor Green
             Write-Host ""
-            Write-Host "✓ Configuration loaded successfully!" -ForegroundColor Green
-            Write-Host "  Version: $($config.version)" -ForegroundColor Green
-            Write-Host "  Reference models: $($config.referenceModels.Count)" -ForegroundColor Green
-            Write-Host "  Additional models: $($config.additionalModels.Count)" -ForegroundColor Green
+            Write-Host "Configuration loaded successfully!" -ForegroundColor Green
+            Write-Host "  Version: $($config.version)" -ForegroundColor Cyan
+            Write-Host "  Reference models: $($config.referenceModels.Count)" -ForegroundColor Cyan
+            Write-Host "  Additional models: $($config.additionalModels.Count)" -ForegroundColor Cyan
             Start-Sleep -Seconds 1
             return $config
         } catch {
-            Write-Host "  ✗ Failed to load config: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "`r[Attempt $retryCount of $maxRetries] Loading config from GitHub... ✗" -ForegroundColor Red
+            Write-Host "  Error: $($_.Exception.Message)" -ForegroundColor Red
             
             if ($retryCount -lt $maxRetries) {
                 Write-Host "  Retrying in $delay seconds..." -ForegroundColor Yellow
@@ -163,10 +166,14 @@ function Get-SystemInfo {
 }
 
 # =============================================================================
-# USB TREE - PROPER HIERARCHICAL VERSION
+# USB TREE - FIXED HIERARCHICAL VERSION
 # =============================================================================
 
 function Get-UsbTree {
+    <#
+    .SYNOPSIS
+        Enumerate USB devices and build hierarchical tree using registry path
+    #>
     param($Config)
     
     Write-Verbose "Enumerating USB devices"
@@ -183,8 +190,9 @@ function Get-UsbTree {
     $devices = @()
     $hubs = @()
     $maxHops = 0
-    $deviceMap = @{}
+    $deviceTree = @{}
     
+    # First pass: collect all devices with their paths
     foreach ($d in $allDevices) {
         $isHub = ($d.FriendlyName -like "*hub*") -or ($d.Name -like "*hub*") -or ($d.Class -eq "USBHub")
         if ($isHub) {
@@ -193,50 +201,54 @@ function Get-UsbTree {
             $devices += $d
         }
         
-        $depth = ($d.InstanceId.ToCharArray() | Where-Object {$_ -eq '\'} | Measure-Object).Count
+        # Split the InstanceId into path segments
+        $pathSegments = $d.InstanceId -split '\\'
+        $depth = $pathSegments.Count - 1
         if ($depth -gt $maxHops) { $maxHops = $depth }
         
-        $lastSlash = $d.InstanceId.LastIndexOf('\')
-        $parentId = if ($lastSlash -gt 0) { $d.InstanceId.Substring(0, $lastSlash) } else { "" }
-        
-        $deviceMap[$d.InstanceId] = @{
+        # Store device info
+        $deviceTree[$d.InstanceId] = @{
             Name = if ($d.FriendlyName) { $d.FriendlyName } else { $d.Name }
             Depth = $depth
             IsHub = $isHub
-            Parent = $parentId
+            PathSegments = $pathSegments
             Children = @()
         }
     }
     
-    foreach ($id in $deviceMap.Keys) {
-        $parent = $deviceMap[$id].Parent
-        if ($parent -and $deviceMap.ContainsKey($parent)) {
-            $deviceMap[$parent].Children += $id
-        }
-    }
-    
+    # Build tree structure by matching parent paths
     $roots = @()
-    foreach ($id in $deviceMap.Keys) {
-        $parent = $deviceMap[$id].Parent
-        if (-not $parent -or -not $deviceMap.ContainsKey($parent)) {
+    foreach ($id in $deviceTree.Keys) {
+        $node = $deviceTree[$id]
+        $parentFound = $false
+        
+        # Look for parent by matching all but last segment
+        if ($node.PathSegments.Count -gt 1) {
+            $parentPath = $node.PathSegments[0..($node.PathSegments.Count-2)] -join '\'
+            if ($deviceTree.ContainsKey($parentPath)) {
+                $deviceTree[$parentPath].Children += $id
+                $parentFound = $true
+            }
+        }
+        
+        if (-not $parentFound) {
             $roots += $id
         }
     }
     
-    if ($roots.Count -eq 0) {
-        $roots = $deviceMap.Keys | Where-Object { $deviceMap[$_].Depth -eq 1 }
-    }
+    # Sort roots by name
+    $roots = $roots | Sort-Object { $deviceTree[$_].Name }
     
-    $roots = $roots | Sort-Object { $deviceMap[$_].Name }
-    
+    # Recursive tree printer
     $treeOutput = "HOST`n"
     
     function Write-DeviceNode {
         param($id, $level, $isLast)
         
-        $node = $deviceMap[$id]
+        $node = $deviceTree[$id]
         if (-not $node) { return }
         
+        # Build the prefix with proper tree characters
         $prefix = ""
         if ($level -gt 0) {
             $prefix = "│   " * ($level - 1)
@@ -248,18 +260,21 @@ function Get-UsbTree {
         $hubTag = if ($node.IsHub) { " [HUB]" } else { "" }
         $script:treeOutput += "$prefix$($node.Name)$hubTag ← $($node.Depth) hops`n"
         
-        $children = $node.Children | Sort-Object { $deviceMap[$_].Name }
+        # Process children
+        $children = $node.Children | Sort-Object { $deviceTree[$_].Name }
         for ($i = 0; $i -lt $children.Count; $i++) {
             $childIsLast = ($i -eq $children.Count - 1)
             Write-DeviceNode $children[$i] ($level + 1) $childIsLast
         }
     }
     
+    # Handle case with no devices
     if ($roots.Count -eq 0) {
         $treeOutput += "├── USB Root Hub (Host Controller) [HUB] ← 1 hops`n"
         $treeOutput += "│   $($Config.messages.noDevices)`n"
         $maxHops = 1
     } else {
+        # Print all roots
         for ($i = 0; $i -lt $roots.Count; $i++) {
             $isLastRoot = ($i -eq $roots.Count - 1)
             Write-DeviceNode $roots[$i] 0 $isLastRoot
@@ -425,6 +440,9 @@ function Show-Report {
     Write-Host $System.Mode -ForegroundColor (Get-Color $Config.colors.yellow)
     Write-Host "Host: $($System.OSVersion) | PowerShell $($System.PSVersion)" -ForegroundColor (Get-Color $Config.colors.gray)
     Write-Host "Arch: $($System.Architecture) | Current: $($System.CurrentPlatform)" -ForegroundColor (Get-Color $Config.colors.gray)
+    
+    # Print config status under Arch
+    Write-Host "Config: Loaded v$($Config.version) (Ref:$($Config.referenceModels.Count) Add:$($Config.additionalModels.Count))" -ForegroundColor Green
     Write-Host ""
     
     Write-Host "USB TREE" -ForegroundColor (Get-Color $Config.colors.cyan)
@@ -489,6 +507,7 @@ Shōko Report - $dateStamp
 $($System.Mode)
 Host: $($System.OSVersion) | PowerShell $($System.PSVersion)
 Arch: $($System.Architecture) | Current: $($System.CurrentPlatform)
+Config: Loaded v$($Config.version) (Ref:$($Config.referenceModels.Count) Add:$($Config.additionalModels.Count))
 
 USB TREE
 ==============================================================================
@@ -583,7 +602,7 @@ function Start-AnalyticsSession {
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "Analytics Log:" -ForegroundColor (Get-Color $Config.colors.cyan)
     
-    $logStartLine = 18
+    $logStartLine = 19  # Adjusted for new config line
     $analyticsLog = @()
     $startTime = Get-Date
     $analyticsLog += "$($startTime.ToString('HH:mm:ss.fff')) - Logging started"
@@ -609,11 +628,11 @@ function Start-AnalyticsSession {
         $elapsed = (Get-Date) - $startTime
         $duration = Format-Duration $elapsed
         
-        $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, 6
+        $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, 7  # Adjusted for config line
         Write-Host "Duration: $duration" -ForegroundColor (Get-Color $Config.colors.green)
         
         if ($System.IsAdmin) {
-            $line = 8
+            $line = 9  # Adjusted for config line
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $line; Write-Host "USB RE-HANDSHAKES: $($counters.rehandshakes)          "
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 1); Write-Host "USB JITTER: $($counters.jitter)          "
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 2); Write-Host "USB CRC ERRORS: $($counters.crcErrors)          "
@@ -624,7 +643,7 @@ function Start-AnalyticsSession {
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 7); Write-Host "DISPLAY LINK FAILURES: $($counters.linkFailures)          "
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 8); Write-Host "OTHER ERRORS: $($counters.otherErrors)          "
         } else {
-            $line = 8
+            $line = 9  # Adjusted for config line
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $line; Write-Host "USB CONNECTS: $($counters.connects)          "
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 1); Write-Host "USB DISCONNECTS: $($counters.disconnects)          "
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 2); Write-Host "USB RE-HANDSHAKES: $($counters.rehandshakes)          "
@@ -650,7 +669,7 @@ function Start-AnalyticsSession {
             $counters.connects = 2
             $counters.disconnects = 1
             
-            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, 7
+            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, 8  # Adjusted for config line
             Write-Host "Total events logged: $($counters.total)          "
         }
         
@@ -739,6 +758,7 @@ function Show-FinalReport {
     Write-Host $System.Mode -ForegroundColor (Get-Color $Config.colors.yellow)
     Write-Host "Host: $($System.OSVersion) | PowerShell $($System.PSVersion)" -ForegroundColor (Get-Color $Config.colors.gray)
     Write-Host "Arch: $($System.Architecture) | Current: $($System.CurrentPlatform)" -ForegroundColor (Get-Color $Config.colors.gray)
+    Write-Host "Config: Loaded v$($Config.version) (Ref:$($Config.referenceModels.Count) Add:$($Config.additionalModels.Count))" -ForegroundColor Green
     Write-Host ""
     
     Write-Host "USB TREE" -ForegroundColor (Get-Color $Config.colors.cyan)
