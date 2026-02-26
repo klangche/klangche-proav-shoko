@@ -49,6 +49,8 @@ if (-not $isAdmin) {
             Write-Host "Failed to download or launch: $($_.Exception.Message)" -ForegroundColor Red
         }
         exit
+    } else {
+        Write-Host "Continuing in basic mode..." -ForegroundColor Gray
     }
 }
 
