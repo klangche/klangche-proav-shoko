@@ -39,18 +39,15 @@ try {
             white = "White"
             red = "Red"
         }
-        platformStability = [PSCustomObject]@{
-            windows = [PSCustomObject]@{ name = "Windows x86"; category = "computer"; rec = 5; max = 7 }
-            windowsArm = [PSCustomObject]@{ name = "Windows ARM"; category = "computer"; rec = 3; max = 5 }
-            linux = [PSCustomObject]@{ name = "Linux"; category = "computer"; rec = 4; max = 6 }
-            linuxArm = [PSCustomObject]@{ name = "Linux ARM"; category = "computer"; rec = 3; max = 5 }
-            macIntel = [PSCustomObject]@{ name = "Mac Intel"; category = "computer"; rec = 5; max = 7 }
-            macAppleSilicon = [PSCustomObject]@{ name = "Mac Apple Silicon"; category = "computer"; rec = 3; max = 5 }
-            ipad = [PSCustomObject]@{ name = "iPad USB-C (M-series)"; category = "device"; rec = 2; max = 4 }
-            iphone = [PSCustomObject]@{ name = "iPhone USB-C"; category = "device"; rec = 2; max = 4 }
-            androidPhone = [PSCustomObject]@{ name = "Android Phone (Snapdragon)"; category = "device"; rec = 3; max = 5 }
-            androidTablet = [PSCustomObject]@{ name = "Android Tablet (Exynos)"; category = "device"; rec = 2; max = 4 }
-        }
+        referenceModels = @(
+            [PSCustomObject]@{ id = "windows"; name = "Windows x86"; rec = 5; max = 7 }
+            [PSCustomObject]@{ id = "windowsArm"; name = "Windows ARM"; rec = 3; max = 5 }
+            [PSCustomObject]@{ id = "macAppleSilicon"; name = "Mac Apple Silicon"; rec = 3; max = 5 }
+        )
+        additionalModels = @(
+            [PSCustomObject]@{ id = "ipad"; name = "iPad USB-C (M-series)"; rec = 2; max = 4 }
+            [PSCustomObject]@{ id = "iphone"; name = "iPhone USB-C"; rec = 2; max = 4 }
+        )
         analytics = [PSCustomObject]@{ 
             updateInterval = 2
             jitterThreshold = 2
@@ -85,85 +82,102 @@ $winVersion = "$($osInfo.Caption) $($osInfo.Version) (Build $($osInfo.BuildNumbe
 $psVersion = $PSVersionTable.PSVersion.ToString()
 $arch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
 
-# Detect current platform (simplified)
-$currentPlatform = "windows"
+# Detect current platform
+$currentPlatform = "Windows x86"
 if ([Environment]::Is64BitOperatingSystem -and [Environment]::ProcessorArchitecture -eq "Arm64") {
-    $currentPlatform = "windowsArm"
+    $currentPlatform = "Windows ARM"
 }
 
 Write-Host "`nCollecting system data..." -ForegroundColor Gray
 
 # =============================================================================
-# USB TREE - ALWAYS SHOWS HOST
+# USB TREE - SIMPLIFIED VERSION
 # =============================================================================
 $allDevices = Get-PnpDevice -Class USB -ErrorAction SilentlyContinue | Where-Object {$_.Status -eq 'OK'}
 if (-not $allDevices) { $allDevices = @() }
 
 $devices = @()
 $hubs = @()
-$deviceList = @()
+$treeOutput = "HOST`n"
 $maxHops = 0
 
-# Add root hubs even if no devices
-$rootHubs = Get-PnpDevice -Class USB -ErrorAction SilentlyContinue | Where-Object { 
-    ($_.FriendlyName -like "*root*hub*") -or ($_.Name -like "*root*hub*") 
-}
-
-foreach ($d in $allDevices) {
-    $isHub = ($d.FriendlyName -like "*hub*") -or ($d.Name -like "*hub*") -or ($d.Class -eq "USBHub")
-    if ($isHub) {
-        $hubs += $d
-    } else {
-        $devices += $d
-    }
-    
-    # Get depth from instance ID (count backslashes)
-    $depth = ($d.InstanceId.ToCharArray() | Where-Object {$_ -eq '\'} | Measure-Object).Count
-    if ($depth -gt $maxHops) { $maxHops = $depth }
-    
-    $deviceList += [PSCustomObject]@{
-        InstanceId = $d.InstanceId
-        Name = if ($d.FriendlyName) { $d.FriendlyName } else { $d.Name }
-        Depth = $depth
-        IsHub = $isHub
-    }
-}
-
-# Build tree output
-$treeOutput = ""
-$treeOutput += "HOST`n"
-
-if ($deviceList.Count -eq 0) {
+if ($allDevices.Count -eq 0) {
     $treeOutput += "├── USB Root Hub (Host Controller) [HUB] ← 1 hops`n"
     $treeOutput += "│   └── No USB devices connected`n"
     $maxHops = 1
 } else {
-    $roots = $deviceList | Where-Object { $_.Depth -eq 1 } | Sort-Object Name
+    $deviceMap = @{}
     
-    function Show-Tree {
-        param($items, $parentId, $level)
+    foreach ($d in $allDevices) {
+        $isHub = ($d.FriendlyName -like "*hub*") -or ($d.Name -like "*hub*") -or ($d.Class -eq "USBHub")
+        if ($isHub) {
+            $hubs += $d
+        } else {
+            $devices += $d
+        }
         
-        $children = $items | Where-Object { 
-            $_.InstanceId -like "$parentId*" -and $_.Depth -eq ($level + 1)
-        } | Sort-Object Name
+        $depth = ($d.InstanceId.ToCharArray() | Where-Object {$_ -eq '\'} | Measure-Object).Count
+        if ($depth -gt $maxHops) { $maxHops = $depth }
         
-        $i = 0
-        foreach ($child in $children) {
-            $i++
-            $isLast = ($i -eq $children.Count)
-            $prefix = if ($level -eq 0) { "" } else { "│   " * ($level) }
-            $branch = if ($isLast) { "└── " } else { "├── " }
-            $hubTag = if ($child.IsHub) { " [HUB]" } else { "" }
-            
-            $script:treeOutput += "$prefix$branch$($child.Name)$hubTag ← $($child.Depth) hops`n"
-            Show-Tree $items $child.InstanceId ($level + 1)
+        $lastSlash = $d.InstanceId.LastIndexOf('\')
+        $parentId = if ($lastSlash -gt 0) { $d.InstanceId.Substring(0, $lastSlash) } else { "" }
+        
+        $deviceMap[$d.InstanceId] = @{
+            Name = if ($d.FriendlyName) { $d.FriendlyName } else { $d.Name }
+            Depth = $depth
+            IsHub = $isHub
+            Parent = $parentId
+            Children = @()
         }
     }
     
-    foreach ($root in $roots) {
-        $hubTag = if ($root.IsHub) { " [HUB]" } else { "" }
-        $treeOutput += "├── $($root.Name)$hubTag ← $($root.Depth) hops`n"
-        Show-Tree $deviceList $root.InstanceId 1
+    foreach ($id in $deviceMap.Keys) {
+        $parent = $deviceMap[$id].Parent
+        if ($parent -and $deviceMap.ContainsKey($parent)) {
+            $deviceMap[$parent].Children += $id
+        }
+    }
+    
+    $roots = @()
+    foreach ($id in $deviceMap.Keys) {
+        $parent = $deviceMap[$id].Parent
+        if (-not $parent -or -not $deviceMap.ContainsKey($parent)) {
+            $roots += $id
+        }
+    }
+    
+    if ($roots.Count -eq 0) {
+        $roots = $deviceMap.Keys | Where-Object { $deviceMap[$_].Depth -eq 1 }
+    }
+    
+    $roots = $roots | Sort-Object { $deviceMap[$_].Name }
+    
+    function Print-Device {
+        param($id, $level, $isLast)
+        
+        $node = $deviceMap[$id]
+        if (-not $node) { return }
+        
+        $prefix = if ($level -eq 0) { "" } else { "│   " * ($level - 1) }
+        if ($level -gt 0) {
+            $prefix += if ($isLast) { "└── " } else { "├── " }
+        } else {
+            $prefix = "├── "
+        }
+        
+        $hubTag = if ($node.IsHub) { " [HUB]" } else { "" }
+        $script:treeOutput += "$prefix$($node.Name)$hubTag ← $($node.Depth) hops`n"
+        
+        $children = $node.Children | Sort-Object { $deviceMap[$_].Name }
+        for ($i = 0; $i -lt $children.Count; $i++) {
+            $childIsLast = ($i -eq $children.Count - 1)
+            Print-Device $children[$i] ($level + 1) $childIsLast
+        }
+    }
+    
+    for ($i = 0; $i -lt $roots.Count; $i++) {
+        $isLastRoot = ($i -eq $roots.Count - 1)
+        Print-Device $roots[$i] 0 $isLastRoot
     }
 }
 
@@ -172,36 +186,50 @@ $baseScore = [Math]::Max($Config.scoring.minScore, (9 - $maxHops))
 $baseScore = [Math]::Min($baseScore, $Config.scoring.maxScore)
 
 # =============================================================================
-# STABILITY PER PLATFORM - WITH CATEGORIES
+# STABILITY PER PLATFORM - REFERENCE VS ADDITIONAL
 # =============================================================================
-$computerOutput = ""
-$deviceOutput = ""
-$computerScores = @()
-$worstComputerScore = $Config.scoring.maxScore
+$referenceOutput = ""
+$additionalOutput = ""
+$referenceScores = @()
+$worstReferenceScore = 10
 
-foreach ($plat in $Config.platformStability.PSObject.Properties.Name) {
-    $rec = $Config.platformStability.$plat.rec
-    $max = $Config.platformStability.$plat.max
-    $name = $Config.platformStability.$plat.name
-    $category = $Config.platformStability.$plat.category
+# Process reference models (affect score)
+foreach ($model in $Config.referenceModels) {
+    $rec = $model.rec
+    $max = $model.max
+    $name = $model.name
     
     $status = if ($numTiers -le $rec) { "STABLE" } 
               elseif ($numTiers -le $max) { "POTENTIALLY UNSTABLE" } 
               else { "NOT STABLE" }
     
-    # Calculate base score for this platform
-    $platScore = [Math]::Max($Config.scoring.minScore, (9 - $maxHops))
-    $platScore = [Math]::Min($platScore, $Config.scoring.maxScore)
+    $modelScore = 9 - $maxHops
+    if ($modelScore -lt $Config.scoring.minScore) { $modelScore = $Config.scoring.minScore }
+    if ($modelScore -gt $Config.scoring.maxScore) { $modelScore = $Config.scoring.maxScore }
     
     $line = "{0,-4} {1,-40} {2}" -f "$numTiers/$max", $name, $status
+    $referenceOutput += "$line`n"
     
-    if ($category -eq "computer") {
-        $computerOutput += "$line`n"
-        $computerScores += $platScore
-        if ($platScore -lt $worstComputerScore) { $worstComputerScore = $platScore }
-    } else {
-        $deviceOutput += "$line`n"
-    }
+    $referenceScores += $modelScore
+    if ($modelScore -lt $worstReferenceScore) { $worstReferenceScore = $modelScore }
+}
+
+# Process additional models (reference only)
+foreach ($model in $Config.additionalModels) {
+    $rec = $model.rec
+    $max = $model.max
+    $name = $model.name
+    
+    $status = if ($numTiers -le $rec) { "STABLE" } 
+              elseif ($numTiers -le $max) { "POTENTIALLY UNSTABLE" } 
+              else { "NOT STABLE" }
+    
+    $line = "{0,-4} {1,-40} {2}" -f "$numTiers/$max", $name, $status
+    $additionalOutput += "$line`n"
+}
+
+if ($referenceScores.Count -eq 0) {
+    $worstReferenceScore = $baseScore
 }
 
 # =============================================================================
@@ -266,7 +294,7 @@ Write-Host "Shōko - USB + Display Diagnostic Tool v$Version" -ForegroundColor (
 Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
 Write-Host $mode -ForegroundColor (Get-Color $Config.colors.yellow)
 Write-Host "Host: $winVersion | PowerShell $psVersion" -ForegroundColor (Get-Color $Config.colors.gray)
-Write-Host "Arch: $arch | Current: $($Config.platformStability.$currentPlatform.name)" -ForegroundColor (Get-Color $Config.colors.gray)
+Write-Host "Arch: $arch | Current: $currentPlatform" -ForegroundColor (Get-Color $Config.colors.gray)
 Write-Host ""
 
 Write-Host "USB TREE" -ForegroundColor (Get-Color $Config.colors.cyan)
@@ -281,19 +309,19 @@ Write-Host $displayOutput
 
 Write-Host "STABILITY PER PLATFORM" -ForegroundColor (Get-Color $Config.colors.cyan)
 Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-Write-Host "Computers (affects score):" -ForegroundColor (Get-Color $Config.colors.white)
-Write-Host $computerOutput
-Write-Host "Additional devices (reference only):" -ForegroundColor (Get-Color $Config.colors.white)
-Write-Host $deviceOutput
+Write-Host "Reference models (affects score):" -ForegroundColor (Get-Color $Config.colors.white)
+Write-Host $referenceOutput
+Write-Host "Additional models (reference only):" -ForegroundColor (Get-Color $Config.colors.white)
+Write-Host $additionalOutput
 Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
 Write-Host ""
 
-$verdict = if ($worstComputerScore -ge $Config.scoring.thresholds.stable) { "STABLE" } 
-           elseif ($worstComputerScore -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" } 
+$verdict = if ($worstReferenceScore -ge $Config.scoring.thresholds.stable) { "STABLE" } 
+           elseif ($worstReferenceScore -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" } 
            else { "NOT STABLE" }
 $verdictColor = Get-Color $Config.colors.($verdict.ToLower().Replace(' ', ''))
 
-Write-Host "HOST SUMMARY: $("{0:D2}" -f $worstComputerScore)/10 - $verdict" -ForegroundColor $verdictColor
+Write-Host "HOST SUMMARY: $("{0:D2}" -f $worstReferenceScore)/10 - $verdict" -ForegroundColor $verdictColor
 Write-Host ""
 
 # =============================================================================
@@ -312,7 +340,7 @@ Shōko Report - $dateStamp
 
 $mode
 Host: $winVersion | PowerShell $psVersion
-Arch: $arch | Current: $($Config.platformStability.$currentPlatform.name)
+Arch: $arch | Current: $currentPlatform
 
 USB TREE
 ==============================================================================
@@ -324,13 +352,13 @@ DISPLAY TREE
 $displayOutput
 STABILITY PER PLATFORM
 ==============================================================================
-Computers (affects score):
-$computerOutput
-Additional devices (reference only):
-$deviceOutput
+Reference models (affects score):
+$referenceOutput
+Additional models (reference only):
+$additionalOutput
 ==============================================================================
 
-HOST SUMMARY: $("{0:D2}" -f $worstComputerScore)/10 - $verdict
+HOST SUMMARY: $("{0:D2}" -f $worstReferenceScore)/10 - $verdict
 </pre></body></html>
 "@
     $htmlContent | Out-File $outHtml -Encoding UTF8
@@ -345,16 +373,15 @@ if ($analyticsChoice -match '^[Yy]') {
     # STORE INITIAL DATA
     $initialTree = $treeOutput
     $initialDisplay = $displayOutput
-    $initialComputerOutput = $computerOutput
-    $initialDeviceOutput = $deviceOutput
-    $initialScore = $worstComputerScore
+    $initialReferenceOutput = $referenceOutput
+    $initialAdditionalOutput = $additionalOutput
+    $initialScore = $worstReferenceScore
     $initialVerdict = $verdict
     $initialDevices = $devices.Count
     $initialHubs = $hubs.Count
     $initialMaxHops = $maxHops
     $initialTiers = $numTiers
     
-    # Clear for analytics
     Clear-Host
     
     # Analytics header
@@ -389,15 +416,12 @@ if ($analyticsChoice -match '^[Yy]') {
         otherErrors = 0
     }
     
-    # Live monitoring loop
     while (-not $Host.UI.RawUI.KeyAvailable) {
         $elapsed = (Get-Date) - $startTime
         $duration = "{0:hh\:mm\:ss\.fff}" -f $elapsed
         
-        # Force cursor to top of stats section
         $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, 6
         
-        # Clear from cursor to end of screen
         $width = $Host.UI.RawUI.WindowSize.Width
         $height = $Host.UI.RawUI.WindowSize.Height
         $currentLine = $Host.UI.RawUI.CursorPosition.Y
@@ -407,10 +431,8 @@ if ($analyticsChoice -match '^[Yy]') {
             Write-Host (" " * $width) -NoNewline
         }
         
-        # Reset cursor to stats section
         $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, 6
         
-        # Update header
         Write-Host "Duration: $duration" -ForegroundColor (Get-Color $Config.colors.green)
         Write-Host "Total events logged: $($counters.total)" -ForegroundColor (Get-Color $Config.colors.white)
         
@@ -438,13 +460,12 @@ if ($analyticsChoice -match '^[Yy]') {
         Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
         Write-Host "Analytics Log:" -ForegroundColor (Get-Color $Config.colors.cyan)
         
-        # Show last 20 log entries
         $startIndex = [Math]::Max(0, $analyticsLog.Count - 20)
         for ($i = $startIndex; $i -lt $analyticsLog.Count; $i++) {
             Write-Host $analyticsLog[$i]
         }
         
-        # SIMULATE EVENTS FOR TESTING (replace with real event monitoring)
+        # Simulate events for testing
         if ($analyticsLog.Count -eq 1) {
             if ($isAdmin) {
                 $analyticsLog += "$($startTime.AddSeconds(2).ToString('HH:mm:ss.fff')) - [CONNECT] USB device connected (VID_046D/PID_0843) - Logitech Webcam C930e"
@@ -471,7 +492,6 @@ if ($analyticsChoice -match '^[Yy]') {
         Start-Sleep -Milliseconds 500
     }
     
-    # Stop analytics
     $key = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
     $stopTime = Get-Date
     $totalDuration = "{0:hh\:mm\:ss\.fff}" -f ($stopTime - $startTime)
@@ -503,7 +523,6 @@ if ($analyticsChoice -match '^[Yy]') {
                        else { "NOT STABLE" }
     $adjustedColor = Get-Color $Config.colors.($adjustedVerdict.ToLower().Replace(' ', ''))
     
-    # Clear and show FINAL REPORT
     Clear-Host
     
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
@@ -511,7 +530,7 @@ if ($analyticsChoice -match '^[Yy]') {
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host $mode -ForegroundColor (Get-Color $Config.colors.yellow)
     Write-Host "Host: $winVersion | PowerShell $psVersion" -ForegroundColor (Get-Color $Config.colors.gray)
-    Write-Host "Arch: $arch | Current: $($Config.platformStability.$currentPlatform.name)" -ForegroundColor (Get-Color $Config.colors.gray)
+    Write-Host "Arch: $arch | Current: $currentPlatform" -ForegroundColor (Get-Color $Config.colors.gray)
     Write-Host ""
     
     Write-Host "USB TREE" -ForegroundColor (Get-Color $Config.colors.cyan)
@@ -526,10 +545,10 @@ if ($analyticsChoice -match '^[Yy]') {
     
     Write-Host "STABILITY PER PLATFORM" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "Computers (affects score):" -ForegroundColor (Get-Color $Config.colors.white)
-    Write-Host $initialComputerOutput
-    Write-Host "Additional devices (reference only):" -ForegroundColor (Get-Color $Config.colors.white)
-    Write-Host $initialDeviceOutput
+    Write-Host "Reference models (affects score):" -ForegroundColor (Get-Color $Config.colors.white)
+    Write-Host $initialReferenceOutput
+    Write-Host "Additional models (reference only):" -ForegroundColor (Get-Color $Config.colors.white)
+    Write-Host $initialAdditionalOutput
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host ""
     
@@ -570,7 +589,6 @@ if ($analyticsChoice -match '^[Yy]') {
         Write-Host $line
     }
     
-    # Question 4 - HTML report with full data
     $finalHtmlChoice = Read-Host "`nOpen HTML report with full data? (y/n)"
     if ($finalHtmlChoice -match '^[Yy]') {
         $dateStamp = Get-Date -Format "yyyyMMdd-HHmmss"
@@ -611,7 +629,7 @@ Shōko Report - $dateStamp
 
 $mode
 Host: $winVersion | PowerShell $psVersion
-Arch: $arch | Current: $($Config.platformStability.$currentPlatform.name)
+Arch: $arch | Current: $currentPlatform
 
 USB TREE
 ==============================================================================
@@ -623,10 +641,10 @@ DISPLAY TREE
 $initialDisplay
 STABILITY PER PLATFORM
 ==============================================================================
-Computers (affects score):
-$initialComputerOutput
-Additional devices (reference only):
-$initialDeviceOutput
+Reference models (affects score):
+$initialReferenceOutput
+Additional models (reference only):
+$initialAdditionalOutput
 ==============================================================================
 
 HOST SUMMARY: $("{0:D2}" -f $initialScore)/10 - $initialVerdict
