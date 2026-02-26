@@ -1,7 +1,6 @@
 # =============================================================================
 # Shōko - USB + Display Diagnostic Tool v1.1.0
-# Updated scoring: 10.0 - maxHops, always 1 decimal, SYSTEM STATUS block
-# Analytics: all counters visible, basic mode shows clear message
+# Full USB tree printing, Gray color fix, basic mode counters message
 # =============================================================================
 
 # =============================================================================
@@ -34,7 +33,7 @@ function Format-Duration {
 }
 
 # =============================================================================
-# PLATFORM STABILITY – new scoring
+# PLATFORM STABILITY
 # =============================================================================
 
 function Get-PlatformStability {
@@ -81,7 +80,7 @@ function Get-PlatformStability {
 }
 
 # =============================================================================
-# REPORTING – clean Nothing detected style
+# REPORTING
 # =============================================================================
 
 function Show-Report {
@@ -98,11 +97,11 @@ function Show-Report {
 
     Write-Host "USB TREE" -ForegroundColor Cyan
     Write-Host "==============================================================================" -ForegroundColor Cyan
-
     if ([string]::IsNullOrWhiteSpace($Usb.Tree) -or $Usb.Devices -eq 0) {
         Write-Host "HOST"
         Write-Host "└── Nothing detected"
     } else {
+        Write-Host "HOST"
         Write-Host $Usb.Tree
     }
     Write-Host "Max hops: $($Usb.MaxHops) | Tiers: $($Usb.Tiers) | Devices: $($Usb.Devices) | Hubs: $($Usb.Hubs)" -ForegroundColor Gray
@@ -110,11 +109,11 @@ function Show-Report {
 
     Write-Host "DISPLAY TREE" -ForegroundColor Magenta
     Write-Host "==============================================================================" -ForegroundColor Cyan
-
     if ([string]::IsNullOrWhiteSpace($Display)) {
         Write-Host "HOST"
         Write-Host "└── Nothing detected"
     } else {
+        Write-Host "HOST"
         Write-Host $Display
     }
     Write-Host ""
@@ -134,7 +133,7 @@ function Show-Report {
 }
 
 # =============================================================================
-# ANALYTICS – all counters visible, basic mode shows message, 2s update
+# ANALYTICS
 # =============================================================================
 
 function Start-AnalyticsSession {
@@ -229,7 +228,7 @@ function Start-AnalyticsSession {
                       ($counters.edidErrors * $Config.scoring.penalties.edidError) +
                       ($counters.linkFailures * $Config.scoring.penalties.linkFailure) +
                       ($counters.otherErrors * $Config.scoring.penalties.otherError)
-    } # basic mode: deductions limited or 0
+    }
 
     $adjustedScore = [Math]::Max(0.0, $initialData.Score - $deductions)
     $adjustedScore = [Math]::Min(10.0, $adjustedScore)
@@ -251,7 +250,7 @@ function Start-AnalyticsSession {
 }
 
 # =============================================================================
-# FINAL REPORT – full breakdown, SYSTEM STATUS
+# FINAL REPORT
 # =============================================================================
 
 function Show-FinalReport {
@@ -273,6 +272,7 @@ function Show-FinalReport {
         Write-Host "HOST"
         Write-Host "└── Nothing detected"
     } else {
+        Write-Host "HOST"
         Write-Host $InitialData.Tree
     }
     Write-Host "Max hops: $($InitialData.MaxHops) | Tiers: $($InitialData.Tiers) | Devices: $($InitialData.Devices) | Hubs: $($InitialData.Hubs)" -ForegroundColor Gray
@@ -284,6 +284,7 @@ function Show-FinalReport {
         Write-Host "HOST"
         Write-Host "└── Nothing detected"
     } else {
+        Write-Host "HOST"
         Write-Host $InitialData.Display
     }
     Write-Host ""
@@ -316,7 +317,7 @@ function Show-FinalReport {
     }
     Write-Host ""
 
-    $initialColor = Gray
+    $initialColor = [ConsoleColor]::Gray
     $adjustedColor = Get-Color $Config.colors.($Analytics.AdjustedVerdict.ToLower() -replace ' ','')
 
     Write-Host "==============================================================================" -ForegroundColor Cyan
@@ -332,11 +333,40 @@ function Show-FinalReport {
 }
 
 # =============================================================================
-# MAIN (keep your original Main function, just update calls to Format-Score)
+# MAIN (your original structure)
 # =============================================================================
 
-# ... your original Main function here, with any score prints changed to Format-Score ...
-# Example in Show-Report or HTML:
-# "HOST SUMMARY: $(Format-Score $Stability.WorstScore)/10.0 - $($Stability.Verdict)"
+function Main {
+    $Config = Get-Configuration
+    $System = Get-SystemInfo
 
+    Write-Host "`nCollecting system data..." -ForegroundColor Gray
+
+    $Usb = Get-UsbTree -Config $Config
+    $Display = Get-DisplayTree -Config $Config
+    $Stability = Get-PlatformStability -Config $Config -Usb $Usb
+
+    Show-Report -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
+
+    $htmlChoice = Read-Host "Open HTML report? (y/n)"
+    if ($htmlChoice -match '^[Yy]') {
+        Save-HtmlReport -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
+    }
+
+    $analyticsChoice = Read-Host "Run deep analytics session? (y/n)"
+    if ($analyticsChoice -match '^[Yy]') {
+        $Analytics = Start-AnalyticsSession -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
+        Show-FinalReport -Config $Config -System $System -InitialData $Analytics.InitialData -Stability $Stability -Analytics $Analytics
+
+        $finalHtml = Read-Host "`nOpen HTML report with full data? (y/n)"
+        if ($finalHtml -match '^[Yy]') {
+            Save-HtmlReport -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability -Analytics $Analytics
+        }
+    }
+
+    Write-Host "`nShōko finished. Press Enter to close." -ForegroundColor Green
+    Read-Host
+}
+
+# Run main
 Main
