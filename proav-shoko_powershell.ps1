@@ -832,20 +832,14 @@ function Main {
     
     Show-Report -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
     
-    # Question 2 - HTML report
-    $htmlChoice = Read-Host "Open HTML report? (y/n)"
-    if ($htmlChoice -match '^[Yy]') {
-        Save-HtmlReport -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
-    }
-    
-    # Question 3 - Analytics
+    # Question 2 - Analytics (first prompt removed, now directly ask for analytics)
     $analyticsChoice = Read-Host "Run deep analytics session? (y/n)"
     if ($analyticsChoice -match '^[Yy]') {
         $Analytics = Start-AnalyticsSession -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
         
         Show-FinalReport -Config $Config -System $System -InitialData $Analytics.InitialData -Stability $Stability -Analytics $Analytics
         
-        # Question 4 - HTML report with full data
+        # Question 3 - HTML report with full data
         $finalHtmlChoice = Read-Host "`nOpen HTML report with full data? (y/n)"
         if ($finalHtmlChoice -match '^[Yy]') {
             Save-HtmlReport -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability -Analytics $Analytics
