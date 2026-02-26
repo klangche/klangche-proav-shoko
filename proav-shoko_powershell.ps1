@@ -1,6 +1,7 @@
 # =============================================================================
-# Shōko - USB + Display Diagnostic Tool   (updated 2026-02-26)
-# Scoring: 10.0 - maxHops, one decimal place, SYSTEM STATUS block
+# Shōko - USB + Display Diagnostic Tool v1.1.0
+# Updated scoring: 10.0 - maxHops, always 1 decimal, SYSTEM STATUS block
+# Analytics: all counters visible, basic mode shows clear message
 # =============================================================================
 
 # =============================================================================
@@ -33,19 +34,16 @@ function Format-Duration {
 }
 
 # =============================================================================
-# PLATFORM STABILITY – updated to new scoring
+# PLATFORM STABILITY – new scoring
 # =============================================================================
 
 function Get-PlatformStability {
     param($Config, $Usb)
 
-    Write-Verbose "Calculating platform stability - maxHops: $($Usb.MaxHops)"
-
     $referenceOutput = ""
     $additionalOutput = ""
     $worstReferenceScore = 10.0
 
-    # Reference models (affect final score)
     foreach ($model in $Config.referenceModels) {
         $baseScore = 10.0 - $Usb.MaxHops
         $score = [Math]::Max($Config.scoring.minScore, [Math]::Min($Config.scoring.maxScore, $baseScore))
@@ -54,12 +52,11 @@ function Get-PlatformStability {
                   elseif ($score -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" }
                   else { "NOT STABLE" }
 
-        $referenceOutput += "$($score.ToString('N1'))/10.0 $($model.name) $status`n"
+        $referenceOutput += "$(Format-Score $score)/10.0 $($model.name) $status`n"
 
         if ($score -lt $worstReferenceScore) { $worstReferenceScore = $score }
     }
 
-    # Additional models (display only)
     foreach ($model in $Config.additionalModels) {
         $baseScore = 10.0 - $Usb.MaxHops
         $score = [Math]::Max($Config.scoring.minScore, [Math]::Min($Config.scoring.maxScore, $baseScore))
@@ -68,7 +65,7 @@ function Get-PlatformStability {
                   elseif ($score -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" }
                   else { "NOT STABLE" }
 
-        $additionalOutput += "$($score.ToString('N1'))/10.0 $($model.name) $status`n"
+        $additionalOutput += "$(Format-Score $score)/10.0 $($model.name) $status`n"
     }
 
     $verdict = if ($worstReferenceScore -ge $Config.scoring.thresholds.stable) { "STABLE" }
@@ -84,38 +81,51 @@ function Get-PlatformStability {
 }
 
 # =============================================================================
-# REPORTING
+# REPORTING – clean Nothing detected style
 # =============================================================================
 
 function Show-Report {
     param($Config, $System, $Usb, $Display, $Stability)
 
     Clear-Host
-    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "Shōko - USB + Display Diagnostic Tool v$($Config.version)" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host $System.Mode -ForegroundColor (Get-Color $Config.colors.yellow)
-    Write-Host "Host: $($System.OSVersion) | PowerShell $($System.PSVersion)" -ForegroundColor (Get-Color $Config.colors.gray)
-    Write-Host "Arch: $($System.Architecture) | Current: $($System.CurrentPlatform)" -ForegroundColor (Get-Color $Config.colors.gray)
+    Write-Host "==============================================================================" -ForegroundColor Cyan
+    Write-Host "Shōko - USB + Display Diagnostic Tool v$($Config.version)" -ForegroundColor Cyan
+    Write-Host "==============================================================================" -ForegroundColor Cyan
+    Write-Host $System.Mode -ForegroundColor Yellow
+    Write-Host "Host: $($System.OSVersion) | PowerShell $($System.PSVersion)" -ForegroundColor Gray
+    Write-Host "Arch: $($System.Architecture) | Current: $($System.CurrentPlatform)" -ForegroundColor Gray
     Write-Host ""
 
-    Write-Host "USB TREE" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host $Usb.Tree
-    Write-Host "Max hops: $($Usb.MaxHops) | Tiers: $($Usb.Tiers) | Devices: $($Usb.Devices) | Hubs: $($Usb.Hubs)" -ForegroundColor (Get-Color $Config.colors.gray)
+    Write-Host "USB TREE" -ForegroundColor Cyan
+    Write-Host "==============================================================================" -ForegroundColor Cyan
+
+    if ([string]::IsNullOrWhiteSpace($Usb.Tree) -or $Usb.Devices -eq 0) {
+        Write-Host "HOST"
+        Write-Host "└── Nothing detected"
+    } else {
+        Write-Host $Usb.Tree
+    }
+    Write-Host "Max hops: $($Usb.MaxHops) | Tiers: $($Usb.Tiers) | Devices: $($Usb.Devices) | Hubs: $($Usb.Hubs)" -ForegroundColor Gray
     Write-Host ""
 
-    Write-Host "DISPLAY TREE" -ForegroundColor (Get-Color $Config.colors.magenta)
-    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host $Display
+    Write-Host "DISPLAY TREE" -ForegroundColor Magenta
+    Write-Host "==============================================================================" -ForegroundColor Cyan
 
-    Write-Host "STABILITY PER PLATFORM" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "Reference models (affects score):" -ForegroundColor (Get-Color $Config.colors.white)
+    if ([string]::IsNullOrWhiteSpace($Display)) {
+        Write-Host "HOST"
+        Write-Host "└── Nothing detected"
+    } else {
+        Write-Host $Display
+    }
+    Write-Host ""
+
+    Write-Host "STABILITY PER PLATFORM" -ForegroundColor Cyan
+    Write-Host "==============================================================================" -ForegroundColor Cyan
+    Write-Host "Reference models (affects score):" -ForegroundColor White
     Write-Host $Stability.ReferenceOutput
-    Write-Host "Additional models (reference only):" -ForegroundColor (Get-Color $Config.colors.white)
+    Write-Host "Additional models (reference only):" -ForegroundColor White
     Write-Host $Stability.AdditionalOutput
-    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
+    Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host ""
 
     $verdictColor = Get-Color $Config.colors.($Stability.Verdict.ToLower() -replace ' ','')
@@ -123,90 +133,12 @@ function Show-Report {
     Write-Host ""
 }
 
-function Save-HtmlReport {
-    param($Config, $System, $Usb, $Display, $Stability, $Analytics = $null)
-
-    $dateStamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $outHtml = "$env:TEMP\shoko-report-$dateStamp.html"
-
-    $analyticsSection = ""
-    if ($Analytics) {
-        $analyticsSection = @"
-
-HOST SUMMARY (initial): $(Format-Score $Analytics.InitialScore)/10.0 - $($Analytics.InitialVerdict)
-HOST SUMMARY (adjusted): $(Format-Score $Analytics.AdjustedScore)/10.0 - $($Analytics.AdjustedVerdict)
-
-==============================================================================
-Analytics Summary (during monitoring):
-Total events logged: $($Analytics.Counters.total)
-$($Analytics.SummaryText)
-Points deducted: -$([math]::Round($Analytics.Deductions,1))
-
-==============================================================================
-Analytics Log (during monitoring):
-$($Analytics.LogText)
-"@
-    } else {
-        $analyticsSection = "HOST SUMMARY: $(Format-Score $Stability.WorstScore)/10.0 - $($Stability.Verdict)"
-    }
-
-    $htmlContent = @"
-<html>
-<head><title>Shōko Report $dateStamp</title></head>
-<body style='background:#000;color:#0f0;font-family:Consolas;'>
-<pre>
-Shōko Report - $dateStamp
-
-$($System.Mode)
-Host: $($System.OSVersion) | PowerShell $($System.PSVersion)
-Arch: $($System.Architecture) | Current: $($System.CurrentPlatform)
-
-USB TREE
-==============================================================================
-$($Usb.Tree)
-Max hops: $($Usb.MaxHops) | Tiers: $($Usb.Tiers) | Devices: $($Usb.Devices) | Hubs: $($Usb.Hubs)
-
-DISPLAY TREE
-==============================================================================
-$Display
-STABILITY PER PLATFORM
-==============================================================================
-Reference models (affects score):
-$($Stability.ReferenceOutput)
-Additional models (reference only):
-$($Stability.AdditionalOutput)
-==============================================================================
-
-$analyticsSection
-</pre></body></html>
-"@
-
-    try {
-        $htmlContent | Out-File $outHtml -Encoding UTF8
-        Start-Process $outHtml
-    } catch {
-        Write-Host "Failed to save/open HTML: $_" -ForegroundColor Red
-    }
-}
-
 # =============================================================================
-# ANALYTICS – waits for key press
+# ANALYTICS – all counters visible, basic mode shows message, 2s update
 # =============================================================================
 
 function Start-AnalyticsSession {
     param($Config, $System, $Usb, $Display, $Stability)
-
-    Clear-Host
-    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "Shoko Analytics" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "Monitoring connections... Press any key to stop" -ForegroundColor (Get-Color $Config.colors.gray)
-    if ($System.IsAdmin) {
-        Write-Host "Elevated mode - full device details" -ForegroundColor (Get-Color $Config.colors.green)
-    } else {
-        Write-Host "Basic mode - device IDs visible, friendly names unavailable" -ForegroundColor (Get-Color $Config.colors.yellow)
-    }
-    Write-Host ""
 
     $initialData = [PSCustomObject]@{
         Tree = $Usb.Tree
@@ -220,6 +152,14 @@ function Start-AnalyticsSession {
         MaxHops = $Usb.MaxHops
         Tiers = $Usb.Tiers
     }
+
+    Clear-Host
+    Write-Host "==============================================================================" -ForegroundColor Cyan
+    Write-Host "Shoko Analytics" -ForegroundColor Cyan
+    Write-Host "==============================================================================" -ForegroundColor Cyan
+    Write-Host "Monitoring connections... Press any key to stop" -ForegroundColor Yellow
+    Write-Host "Update every 2 seconds" -ForegroundColor Gray
+    Write-Host ""
 
     $analyticsLog = @()
     $startTime = Get-Date
@@ -240,37 +180,56 @@ function Start-AnalyticsSession {
         otherErrors = 0
     }
 
+    $statsLine = 6
+
     while (-not $Host.UI.RawUI.KeyAvailable) {
         $elapsed = (Get-Date) - $startTime
         $duration = Format-Duration $elapsed
 
-        $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, 6
-        Write-Host "Duration: $duration" -ForegroundColor (Get-Color $Config.colors.green) -NoNewline
+        $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $statsLine
+        Write-Host "Duration: $duration                  " -ForegroundColor Green -NoNewline
 
-        $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, 7
-        Write-Host "Total events logged: $($counters.total)" -ForegroundColor (Get-Color $Config.colors.white) -NoNewline
+        $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($statsLine + 1)
+        Write-Host "Total events logged: $($counters.total)                  " -ForegroundColor White -NoNewline
 
-        # Placeholder – replace with real event detection logic
-        Start-Sleep -Milliseconds 800
-        $counters.total++
+        $line = $statsLine + 3
+
+        if ($System.IsAdmin) {
+            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $line;     Write-Host "USB RE-HANDSHAKES: $($counters.rehandshakes)          " -NoNewline
+            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line+1); Write-Host "USB JITTER: $($counters.jitter)          " -NoNewline
+            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line+2); Write-Host "USB CRC ERRORS: $($counters.crcErrors)          " -NoNewline
+            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line+3); Write-Host "USB BUS RESETS: $($counters.busResets)          " -NoNewline
+            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line+4); Write-Host "USB OVERCURRENT: $($counters.overcurrent)          " -NoNewline
+            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line+5); Write-Host "DISPLAY HOTPLUGS: $($counters.hotplugs)          " -NoNewline
+            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line+6); Write-Host "DISPLAY EDID ERRORS: $($counters.edidErrors)          " -NoNewline
+            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line+7); Write-Host "DISPLAY LINK FAILURES: $($counters.linkFailures)          " -NoNewline
+            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line+8); Write-Host "OTHER ERRORS: $($counters.otherErrors)          " -NoNewline
+        } else {
+            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $line
+            Write-Host "Basic mode – not evaluated                          " -ForegroundColor Yellow -NoNewline
+            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line+1)
+            Write-Host "Run elevated for full counters & detailed errors   " -ForegroundColor Yellow -NoNewline
+        }
+
+        Start-Sleep -Seconds 2
     }
 
-    # Consume key press
     $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-
     $stopTime = Get-Date
     $analyticsLog += "$($stopTime.ToString('HH:mm:ss.fff')) - Logging ended (total duration: $(Format-Duration ($stopTime - $startTime)))"
 
-    # Calculate deductions (placeholder values – replace with real counter logic)
-    $deductions = ($counters.rehandshakes * $Config.scoring.penalties.rehandshake) +
-                  ($counters.jitter * $Config.scoring.penalties.jitter) +
-                  ($counters.crcErrors * $Config.scoring.penalties.crc) +
-                  ($counters.busResets * $Config.scoring.penalties.busReset) +
-                  ($counters.overcurrent * $Config.scoring.penalties.overcurrent) +
-                  ($counters.hotplugs * $Config.scoring.penalties.hotplug) +
-                  ($counters.edidErrors * $Config.scoring.penalties.edidError) +
-                  ($counters.linkFailures * $Config.scoring.penalties.linkFailure) +
-                  ($counters.otherErrors * $Config.scoring.penalties.otherError)
+    $deductions = 0
+    if ($System.IsAdmin) {
+        $deductions = ($counters.rehandshakes * $Config.scoring.penalties.rehandshake) +
+                      ($counters.jitter * $Config.scoring.penalties.jitter) +
+                      ($counters.crcErrors * $Config.scoring.penalties.crc) +
+                      ($counters.busResets * $Config.scoring.penalties.busReset) +
+                      ($counters.overcurrent * $Config.scoring.penalties.overcurrent) +
+                      ($counters.hotplugs * $Config.scoring.penalties.hotplug) +
+                      ($counters.edidErrors * $Config.scoring.penalties.edidError) +
+                      ($counters.linkFailures * $Config.scoring.penalties.linkFailure) +
+                      ($counters.otherErrors * $Config.scoring.penalties.otherError)
+    } # basic mode: deductions limited or 0
 
     $adjustedScore = [Math]::Max(0.0, $initialData.Score - $deductions)
     $adjustedScore = [Math]::Min(10.0, $adjustedScore)
@@ -292,7 +251,7 @@ function Start-AnalyticsSession {
 }
 
 # =============================================================================
-# FINAL REPORT AFTER ANALYTICS
+# FINAL REPORT – full breakdown, SYSTEM STATUS
 # =============================================================================
 
 function Show-FinalReport {
@@ -300,87 +259,84 @@ function Show-FinalReport {
 
     Clear-Host
 
-    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "Shōko - USB + Display Diagnostic Tool v$($Config.version)" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host $System.Mode -ForegroundColor (Get-Color $Config.colors.yellow)
-    Write-Host "Host: $($System.OSVersion) | PowerShell $($System.PSVersion)" -ForegroundColor (Get-Color $Config.colors.gray)
-    Write-Host "Arch: $($System.Architecture) | Current: $($System.CurrentPlatform)" -ForegroundColor (Get-Color $Config.colors.gray)
+    Write-Host "==============================================================================" -ForegroundColor Cyan
+    Write-Host "Shōko - USB + Display Diagnostic Tool v$($Config.version)" -ForegroundColor Cyan
+    Write-Host "==============================================================================" -ForegroundColor Cyan
+    Write-Host $System.Mode -ForegroundColor Yellow
+    Write-Host "Host: $($System.OSVersion) | PowerShell $($System.PSVersion)" -ForegroundColor Gray
+    Write-Host "Arch: $($System.Architecture) | Current: $($System.CurrentPlatform)" -ForegroundColor Gray
     Write-Host ""
 
-    Write-Host "USB TREE" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host $InitialData.Tree
+    Write-Host "USB TREE" -ForegroundColor Cyan
+    Write-Host "==============================================================================" -ForegroundColor Cyan
+    if ([string]::IsNullOrWhiteSpace($InitialData.Tree) -or $InitialData.Devices -eq 0) {
+        Write-Host "HOST"
+        Write-Host "└── Nothing detected"
+    } else {
+        Write-Host $InitialData.Tree
+    }
     Write-Host "Max hops: $($InitialData.MaxHops) | Tiers: $($InitialData.Tiers) | Devices: $($InitialData.Devices) | Hubs: $($InitialData.Hubs)" -ForegroundColor Gray
     Write-Host ""
 
-    Write-Host "DISPLAY TREE" -ForegroundColor (Get-Color $Config.colors.magenta)
-    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host $InitialData.Display
+    Write-Host "DISPLAY TREE" -ForegroundColor Magenta
+    Write-Host "==============================================================================" -ForegroundColor Cyan
+    if ([string]::IsNullOrWhiteSpace($InitialData.Display)) {
+        Write-Host "HOST"
+        Write-Host "└── Nothing detected"
+    } else {
+        Write-Host $InitialData.Display
+    }
+    Write-Host ""
 
-    Write-Host "STABILITY PER PLATFORM" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
+    Write-Host "STABILITY PER PLATFORM" -ForegroundColor Cyan
+    Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host "Reference models (affects score):" -ForegroundColor White
     Write-Host $InitialData.ReferenceOutput
     Write-Host "Additional models (reference only):" -ForegroundColor White
     Write-Host $InitialData.AdditionalOutput
-    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
+    Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host ""
-
-    $verdictColor = Get-Color $Config.colors.($Stability.Verdict.ToLower() -replace ' ','')
-    $adjustedColor = Get-Color $Config.colors.($Analytics.AdjustedVerdict.ToLower() -replace ' ','')
 
     Write-Host "Points deducted: -$([math]::Round($Analytics.Deductions,1))" -ForegroundColor Yellow
+
+    if ($System.IsAdmin) {
+        Write-Host "  └─ $($Analytics.Counters.rehandshakes) × rehandshake (−$($Config.scoring.penalties.rehandshake)) = -$($Analytics.Counters.rehandshakes * $Config.scoring.penalties.rehandshake)"
+        Write-Host "  └─ $($Analytics.Counters.jitter) × jitter (−$($Config.scoring.penalties.jitter)) = -$($Analytics.Counters.jitter * $Config.scoring.penalties.jitter)"
+        Write-Host "  └─ $($Analytics.Counters.crcErrors) × CRC (−$($Config.scoring.penalties.crc)) = -$($Analytics.Counters.crcErrors * $Config.scoring.penalties.crc)"
+        Write-Host "  └─ $($Analytics.Counters.busResets) × bus reset (−$($Config.scoring.penalties.busReset)) = -$($Analytics.Counters.busResets * $Config.scoring.penalties.busReset)"
+        Write-Host "  └─ $($Analytics.Counters.overcurrent) × overcurrent (−$($Config.scoring.penalties.overcurrent)) = -$($Analytics.Counters.overcurrent * $Config.scoring.penalties.overcurrent)"
+        Write-Host "  └─ $($Analytics.Counters.hotplugs) × hotplug (−$($Config.scoring.penalties.hotplug)) = -$($Analytics.Counters.hotplugs * $Config.scoring.penalties.hotplug)"
+        Write-Host "  └─ $($Analytics.Counters.edidErrors) × EDID error (−$($Config.scoring.penalties.edidError)) = -$($Analytics.Counters.edidErrors * $Config.scoring.penalties.edidError)"
+        Write-Host "  └─ $($Analytics.Counters.linkFailures) × link failure (−$($Config.scoring.penalties.linkFailure)) = -$($Analytics.Counters.linkFailures * $Config.scoring.penalties.linkFailure)"
+        Write-Host "  └─ $($Analytics.Counters.otherErrors) × other (−$($Config.scoring.penalties.otherError)) = -$($Analytics.Counters.otherErrors * $Config.scoring.penalties.otherError)"
+    } else {
+        Write-Host "  Basic mode – not evaluated" -ForegroundColor Yellow
+        Write-Host "  Only basic connect/disconnect events counted" -ForegroundColor Yellow
+        Write-Host "  Run elevated for full error types and accurate deductions" -ForegroundColor Yellow
+    }
     Write-Host ""
 
-    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host "SYSTEM STATUS" -ForegroundColor (Get-Color $Config.colors.cyan)
+    $initialColor = Gray
+    $adjustedColor = Get-Color $Config.colors.($Analytics.AdjustedVerdict.ToLower() -replace ' ','')
+
+    Write-Host "==============================================================================" -ForegroundColor Cyan
+    Write-Host "SYSTEM STATUS" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "HOST SUMMARY (initial):  $(Format-Score $Analytics.InitialScore)/10.0 - $($Analytics.InitialVerdict)" -ForegroundColor Gray
+    Write-Host "HOST SUMMARY (initial):  $(Format-Score $Analytics.InitialScore)/10.0 - $($Analytics.InitialVerdict)" -ForegroundColor $initialColor
     Write-Host "HOST SUMMARY (adjusted): $(Format-Score $Analytics.AdjustedScore)/10.0 - $($Analytics.AdjustedVerdict)" -ForegroundColor $adjustedColor
-    Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
+    Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host ""
 
-    Write-Host "Analytics log excerpt:" -ForegroundColor (Get-Color $Config.colors.cyan)
+    Write-Host "Analytics log excerpt:" -ForegroundColor Cyan
     $Analytics.Log | Select-Object -Last 8 | ForEach-Object { Write-Host $_ }
 }
 
 # =============================================================================
-# MAIN FLOW
+# MAIN (keep your original Main function, just update calls to Format-Score)
 # =============================================================================
 
-function Main {
-    $Config = Get-Configuration           # your existing function
-    $System = Get-SystemInfo              # your existing function
+# ... your original Main function here, with any score prints changed to Format-Score ...
+# Example in Show-Report or HTML:
+# "HOST SUMMARY: $(Format-Score $Stability.WorstScore)/10.0 - $($Stability.Verdict)"
 
-    Write-Host "`nCollecting system data..." -ForegroundColor Gray
-
-    $Usb = Get-UsbTree -Config $Config    # your existing function
-    $Display = Get-DisplayTree -Config $Config
-
-    $Stability = Get-PlatformStability -Config $Config -Usb $Usb
-
-    Show-Report -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
-
-    $htmlChoice = Read-Host "Open HTML report? (y/n)"
-    if ($htmlChoice -match '^[Yy]') {
-        Save-HtmlReport -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
-    }
-
-    $analyticsChoice = Read-Host "Run deep analytics session? (y/n)"
-    if ($analyticsChoice -match '^[Yy]') {
-        $Analytics = Start-AnalyticsSession -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
-        Show-FinalReport -Config $Config -System $System -InitialData $Analytics.InitialData -Stability $Stability -Analytics $Analytics
-
-        $finalHtml = Read-Host "`nOpen HTML report with full data? (y/n)"
-        if ($finalHtml -match '^[Yy]') {
-            Save-HtmlReport -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability -Analytics $Analytics
-        }
-    }
-
-    Write-Host "`nShōko finished. Press Enter to close." -ForegroundColor Green
-    Read-Host
-}
-
-# Run
 Main
