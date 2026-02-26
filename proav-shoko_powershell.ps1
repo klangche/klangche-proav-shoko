@@ -37,6 +37,9 @@ function Get-Configuration {
         Write-Verbose "Failed to load config: $_, using defaults"
         return [PSCustomObject]@{ 
             version = "local"
+            messages = [PSCustomObject]@{
+                noDevices = "└── Nothing detected"
+            }
             scoring = [PSCustomObject]@{ 
                 minScore = 1
                 maxScore = 10
@@ -193,6 +196,8 @@ function Get-UsbTree {
     .SYNOPSIS
         Enumerate USB devices and build hierarchical tree
     #>
+    param($Config)
+    
     Write-Verbose "Enumerating USB devices"
     
     $allDevices = try {
@@ -211,9 +216,9 @@ function Get-UsbTree {
     $deviceMap = @{}
     
     if ($allDevices.Count -eq 0) {
-    $treeOutput += "├── USB Root Hub (Host Controller) [HUB] ← 1 hops`n"
-    $treeOutput += "│   $($Config.messages.noDevices)`n"
-    $maxHops = 1
+        $treeOutput += "├── USB Root Hub (Host Controller) [HUB] ← 1 hops`n"
+        $treeOutput += "│   $($Config.messages.noDevices)`n"
+        $maxHops = 1
     } else {
         foreach ($d in $allDevices) {
             $isHub = ($d.FriendlyName -like "*hub*") -or ($d.Name -like "*hub*") -or ($d.Class -eq "USBHub")
@@ -311,6 +316,8 @@ function Get-DisplayTree {
     .SYNOPSIS
         Enumerate displays and connection information
     #>
+    param($Config)
+    
     Write-Verbose "Enumerating displays"
     
     $isAdmin = (Get-SystemInfo).IsAdmin
@@ -373,7 +380,7 @@ function Get-DisplayTree {
             $displayOutput += "`n"
         }
     } else {
-        $displayOutput += "└── $($Config.messages.noDevices)`n"
+        $displayOutput += "$($Config.messages.noDevices)`n"
     }
     
     return $displayOutput
@@ -660,11 +667,6 @@ function Start-AnalyticsSession {
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 6); Write-Host "DISPLAY ERRORS: $($counters.edidErrors + $counters.linkFailures)          "
         }
         
-        # Simulate events for testing (REMOVE IN PRODUCTION)
-        # if ($analyticsLog.Count -eq 1) {
-        #     # Simulation code here
-        # }
-        
         Start-Sleep -Milliseconds 500
     }
     
@@ -811,8 +813,8 @@ function Main {
     
     Write-Host "`nCollecting system data..." -ForegroundColor Gray
     
-    $Usb = Get-UsbTree
-    $Display = Get-DisplayTree
+    $Usb = Get-UsbTree -Config $Config
+    $Display = Get-DisplayTree -Config $Config
     $Stability = Get-PlatformStability -Config $Config -Tiers $Usb.Tiers
     
     Show-Report -Config $Config -System $System -Usb $Usb -Display $Display -Stability $Stability
@@ -843,4 +845,3 @@ function Main {
 
 # Run main
 Main
-
