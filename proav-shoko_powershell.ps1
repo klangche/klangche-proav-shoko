@@ -166,13 +166,13 @@ function Get-SystemInfo {
 }
 
 # =============================================================================
-# USB TREE - FIXED HIERARCHICAL VERSION
+# USB TREE - HANDLES VM/HOST CONTROLLERS GRACEFULLY
 # =============================================================================
 
 function Get-UsbTree {
     <#
     .SYNOPSIS
-        Enumerate USB devices and build hierarchical tree using registry path
+        Enumerate USB devices – shows host controllers when no physical devices
     #>
     param($Config)
     
@@ -190,9 +190,9 @@ function Get-UsbTree {
     $devices = @()
     $hubs = @()
     $maxHops = 0
-    $deviceTree = @{}
+    $treeOutput = "HOST`n"
     
-    # First pass: collect all devices with their paths
+    # Separate hubs from devices
     foreach ($d in $allDevices) {
         $isHub = ($d.FriendlyName -like "*hub*") -or ($d.Name -like "*hub*") -or ($d.Class -eq "USBHub")
         if ($isHub) {
@@ -201,83 +201,101 @@ function Get-UsbTree {
             $devices += $d
         }
         
-        # Split the InstanceId into path segments
-        $pathSegments = $d.InstanceId -split '\\'
-        $depth = $pathSegments.Count - 1
+        $depth = ($d.InstanceId.ToCharArray() | Where-Object {$_ -eq '\'} | Measure-Object).Count
         if ($depth -gt $maxHops) { $maxHops = $depth }
-        
-        # Store device info
-        $deviceTree[$d.InstanceId] = @{
-            Name = if ($d.FriendlyName) { $d.FriendlyName } else { $d.Name }
-            Depth = $depth
-            IsHub = $isHub
-            PathSegments = $pathSegments
-            Children = @()
-        }
     }
     
-    # Build tree structure by matching parent paths
-    $roots = @()
-    foreach ($id in $deviceTree.Keys) {
-        $node = $deviceTree[$id]
-        $parentFound = $false
+    # Check if these are just host controllers (no physical devices)
+    $hasPhysicalDevices = $devices | Where-Object { 
+        $_.FriendlyName -notlike "*controller*" -and 
+        $_.FriendlyName -notlike "*host*" -and
+        $_.Name -notlike "*controller*" -and
+        $_.Name -notlike "*host*"
+    }
+    
+    # Check if hubs are just root hubs
+    $hasExternalHubs = $hubs | Where-Object { 
+        $_.FriendlyName -notlike "*root*hub*" -and 
+        $_.Name -notlike "*root*hub*"
+    }
+    
+    if (-not $hasPhysicalDevices -and -not $hasExternalHubs) {
+        # This is a VM or system with only host controllers
+        $treeOutput += "├── USB Host Controllers (virtual) ← 1 hops`n"
+        foreach ($d in $allDevices | Sort-Object FriendlyName) {
+            $name = if ($d.FriendlyName) { $d.FriendlyName } else { $d.Name }
+            $treeOutput += "│   ├── $name ← 2 hops`n"
+        }
+        $treeOutput += "│   $($Config.messages.noDevices)`n"
+        $maxHops = 2
+    } else {
+        # We have real devices, build proper tree
+        $deviceMap = @{}
         
-        # Look for parent by matching all but last segment
-        if ($node.PathSegments.Count -gt 1) {
-            $parentPath = $node.PathSegments[0..($node.PathSegments.Count-2)] -join '\'
-            if ($deviceTree.ContainsKey($parentPath)) {
-                $deviceTree[$parentPath].Children += $id
-                $parentFound = $true
+        # Build device map
+        foreach ($d in $allDevices) {
+            $lastSlash = $d.InstanceId.LastIndexOf('\')
+            $parentId = if ($lastSlash -gt 0) { $d.InstanceId.Substring(0, $lastSlash) } else { "" }
+            
+            $deviceMap[$d.InstanceId] = @{
+                Name = if ($d.FriendlyName) { $d.FriendlyName } else { $d.Name }
+                Depth = ($d.InstanceId.ToCharArray() | Where-Object {$_ -eq '\'} | Measure-Object).Count
+                IsHub = ($d.FriendlyName -like "*hub*") -or ($d.Name -like "*hub*") -or ($d.Class -eq "USBHub")
+                Parent = $parentId
+                Children = @()
             }
         }
         
-        if (-not $parentFound) {
-            $roots += $id
+        # Build relationships
+        foreach ($id in $deviceMap.Keys) {
+            $parent = $deviceMap[$id].Parent
+            if ($parent -and $deviceMap.ContainsKey($parent)) {
+                $deviceMap[$parent].Children += $id
+            }
         }
-    }
-    
-    # Sort roots by name
-    $roots = $roots | Sort-Object { $deviceTree[$_].Name }
-    
-    # Recursive tree printer
-    $treeOutput = "HOST`n"
-    
-    function Write-DeviceNode {
-        param($id, $level, $isLast)
         
-        $node = $deviceTree[$id]
-        if (-not $node) { return }
+        # Find roots
+        $roots = @()
+        foreach ($id in $deviceMap.Keys) {
+            $parent = $deviceMap[$id].Parent
+            if (-not $parent -or -not $deviceMap.ContainsKey($parent)) {
+                $roots += $id
+            }
+        }
         
-        # Build the prefix with proper tree characters
-        $prefix = ""
-        if ($level -gt 0) {
-            $prefix = "│   " * ($level - 1)
-            $prefix += if ($isLast) { "└── " } else { "├── " }
+        $roots = $roots | Sort-Object { $deviceMap[$_].Name }
+        
+        # Recursive printer
+        function Write-DeviceNode {
+            param($id, $level, $isLast)
+            
+            $node = $deviceMap[$id]
+            if (-not $node) { return }
+            
+            $prefix = ""
+            if ($level -gt 0) {
+                $prefix = "│   " * ($level - 1)
+                $prefix += if ($isLast) { "└── " } else { "├── " }
+            } else {
+                $prefix = "├── "
+            }
+            
+            $hubTag = if ($node.IsHub) { " [HUB]" } else { "" }
+            $script:treeOutput += "$prefix$($node.Name)$hubTag ← $($node.Depth) hops`n"
+            
+            $children = $node.Children | Sort-Object { $deviceMap[$_].Name }
+            for ($i = 0; $i -lt $children.Count; $i++) {
+                Write-DeviceNode $children[$i] ($level + 1) ($i -eq $children.Count - 1)
+            }
+        }
+        
+        if ($roots.Count -eq 0) {
+            $treeOutput += "├── USB Root Hub (Host Controller) [HUB] ← 1 hops`n"
+            $treeOutput += "│   $($Config.messages.noDevices)`n"
         } else {
-            $prefix = "├── "
-        }
-        
-        $hubTag = if ($node.IsHub) { " [HUB]" } else { "" }
-        $script:treeOutput += "$prefix$($node.Name)$hubTag ← $($node.Depth) hops`n"
-        
-        # Process children
-        $children = $node.Children | Sort-Object { $deviceTree[$_].Name }
-        for ($i = 0; $i -lt $children.Count; $i++) {
-            $childIsLast = ($i -eq $children.Count - 1)
-            Write-DeviceNode $children[$i] ($level + 1) $childIsLast
-        }
-    }
-    
-    # Handle case with no devices
-    if ($roots.Count -eq 0) {
-        $treeOutput += "├── USB Root Hub (Host Controller) [HUB] ← 1 hops`n"
-        $treeOutput += "│   $($Config.messages.noDevices)`n"
-        $maxHops = 1
-    } else {
-        # Print all roots
-        for ($i = 0; $i -lt $roots.Count; $i++) {
-            $isLastRoot = ($i -eq $roots.Count - 1)
-            Write-DeviceNode $roots[$i] 0 $isLastRoot
+            for ($i = 0; $i -lt $roots.Count; $i++) {
+                Write-DeviceNode $roots[$i] 0 ($i -eq $roots.Count - 1)
+            }
         }
     }
     
@@ -842,3 +860,4 @@ function Main {
 }
 
 Main
+
