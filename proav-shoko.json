@@ -39,10 +39,10 @@
   "referenceModels": [
     { "id": "windows",          "name": "Windows x86",         "rec": 7,  "max": 9 },
     { "id": "windowsArm",       "name": "Windows ARM",         "rec": 6,  "max": 8 },
-    { "id": "linux",            "name": "Linux",                "rec": 6,  "max": 8 },
-    { "id": "linuxArm",         "name": "Linux ARM",           "rec": 5,  "max": 7 },
     { "id": "macIntel",         "name": "Mac Intel",           "rec": 7,  "max": 9 },
     { "id": "macAppleSilicon",  "name": "Mac Apple Silicon",   "rec": 5,  "max": 7 }
+    { "id": "linux",            "name": "Linux",                "rec": 6,  "max": 8 },
+    { "id": "linuxArm",         "name": "Linux ARM",           "rec": 5,  "max": 7 },
   ],
 
   "additionalModels": [
