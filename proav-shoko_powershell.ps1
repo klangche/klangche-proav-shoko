@@ -1,7 +1,9 @@
 # =============================================================================
 # Shōko - USB + Display Diagnostic Tool v1.1.0
-# Full version - USB tree fixed, no early HTML prompt, basic mode counters message
-# Analytics: 2s refresh, all counters visible, SYSTEM STATUS block
+# Full version (~550 lines) - USB tree fixed, no early HTML prompt,
+# Basic mode analytics message instead of 0s, 2s refresh, SYSTEM STATUS exact
+# Null-safe, no crashes on missing config/models
+# Last updated: February 26, 2026
 # =============================================================================
 
 # =============================================================================
@@ -10,6 +12,7 @@
 
 function Get-Color {
     param($ColorName)
+    if ($null -eq $ColorName) { return [ConsoleColor]::White }
     switch ($ColorName.ToLower()) {
         "cyan"    { [ConsoleColor]::Cyan }
         "magenta" { [ConsoleColor]::Magenta }
@@ -23,9 +26,9 @@ function Get-Color {
 }
 
 function Format-Score {
-    param([double]$Score)
-    if ($null -eq $Score) { return "0.0" }
-    $clamped = [Math]::Max(0.0, [Math]::Min(10.0, $Score))
+    param($Score)
+    if ($null -eq $Score -or $Score -isnot [double]) { return "0.0" }
+    $clamped = [Math]::Max(0.0, [Math]::Min(10.0, [double]$Score))
     return $clamped.ToString("N1")
 }
 
@@ -35,16 +38,77 @@ function Format-Duration {
 }
 
 # =============================================================================
+# CONFIG LOADING (fallback if json missing)
+# =============================================================================
+
+function Get-Configuration {
+    $jsonPath = "$PSScriptRoot\proav-shoko.json"
+    if (Test-Path $jsonPath) {
+        try {
+            return Get-Content $jsonPath -Raw | ConvertFrom-Json -ErrorAction Stop
+        } catch {
+            Write-Host "JSON parse error: $_" -ForegroundColor Red
+        }
+    }
+
+    Write-Host "proav-shoko.json not found or invalid - using fallback config" -ForegroundColor Yellow
+
+    # Minimal fallback config to prevent null crashes
+    return [PSCustomObject]@{
+        version = "1.1.0 (fallback)"
+        scoring = [PSCustomObject]@{
+            minScore = 0.0
+            maxScore = 10.0
+            thresholds = [PSCustomObject]@{
+                stable = 7.0
+                potentiallyUnstable = 4.5
+                notStable = 1.0
+            }
+            penalties = [PSCustomObject]@{
+                rehandshake = 0.5
+                jitter = 1.5
+                crc = 1.0
+                busReset = 1.0
+                overcurrent = 2.0
+                hotplug = 0.5
+                edidError = 1.0
+                linkFailure = 1.0
+                otherError = 0.25
+            }
+        }
+        colors = [PSCustomObject]@{
+            cyan = "Cyan"
+            magenta = "Magenta"
+            yellow = "Yellow"
+            green = "Green"
+            gray = "Gray"
+            white = "White"
+            red = "Red"
+            stable = "Green"
+            potentiallyUnstable = "Yellow"
+            notStable = "Red"
+        }
+        referenceModels = @(
+            [PSCustomObject]@{ name = "Windows x86"         }
+            [PSCustomObject]@{ name = "Mac Apple Silicon"   }
+        )
+        additionalModels = @(
+            [PSCustomObject]@{ name = "iPad USB-C (M-series)" }
+        )
+    }
+}
+
+# =============================================================================
 # PLATFORM STABILITY – null safe
 # =============================================================================
 
 function Get-PlatformStability {
     param($Config, $Usb)
 
-    if ($null -eq $Config -or $null -eq $Config.referenceModels) {
+    if ($null -eq $Config -or $null -eq $Config.referenceModels -or $null -eq $Config.additionalModels) {
         return [PSCustomObject]@{
-            ReferenceOutput  = "No reference models loaded (config error)"
-            AdditionalOutput = "No additional models loaded (config error)"
+            ReferenceOutput  = "Config/models missing - check proav-shoko.json"
+            AdditionalOutput = "Config/models missing - check proav-shoko.json"
             WorstScore       = 0.0
             Verdict          = "UNKNOWN"
         }
@@ -55,27 +119,27 @@ function Get-PlatformStability {
     $worstReferenceScore = 10.0
 
     foreach ($model in $Config.referenceModels) {
-        $baseScore = 10.0 - $Usb.MaxHops
+        $baseScore = 10.0 - ($Usb.MaxHops -as [int] -or 0)
         $score = [Math]::Max($Config.scoring.minScore, [Math]::Min($Config.scoring.maxScore, $baseScore))
 
         $status = if ($score -ge $Config.scoring.thresholds.stable) { "STABLE" }
                   elseif ($score -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" }
                   else { "NOT STABLE" }
 
-        $referenceOutput += "$(Format-Score $score)/10.0 $($model.name) $status`n"
+        $referenceOutput += "$(Format-Score $score)/10.0 $($model.name -or 'Unknown model') $status`n"
 
         if ($score -lt $worstReferenceScore) { $worstReferenceScore = $score }
     }
 
     foreach ($model in $Config.additionalModels) {
-        $baseScore = 10.0 - $Usb.MaxHops
+        $baseScore = 10.0 - ($Usb.MaxHops -as [int] -or 0)
         $score = [Math]::Max($Config.scoring.minScore, [Math]::Min($Config.scoring.maxScore, $baseScore))
 
         $status = if ($score -ge $Config.scoring.thresholds.stable) { "STABLE" }
                   elseif ($score -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" }
                   else { "NOT STABLE" }
 
-        $additionalOutput += "$(Format-Score $score)/10.0 $($model.name) $status`n"
+        $additionalOutput += "$(Format-Score $score)/10.0 $($model.name -or 'Unknown model') $status`n"
     }
 
     $verdict = if ($worstReferenceScore -ge $Config.scoring.thresholds.stable) { "STABLE" }
@@ -91,30 +155,33 @@ function Get-PlatformStability {
 }
 
 # =============================================================================
-# REPORTING
+# REPORTING – single HOST, fallback text
 # =============================================================================
 
 function Show-Report {
     param($Config, $System, $Usb, $Display, $Stability)
 
     Clear-Host
+
+    $version = if ($Config -and $Config.version) { $Config.version } else { "1.1.0 (config missing)" }
+
     Write-Host "==============================================================================" -ForegroundColor Cyan
-    Write-Host "Shōko - USB + Display Diagnostic Tool v$($Config.version)" -ForegroundColor Cyan
+    Write-Host "Shōko - USB + Display Diagnostic Tool v$version" -ForegroundColor Cyan
     Write-Host "==============================================================================" -ForegroundColor Cyan
-    Write-Host $System.Mode -ForegroundColor Yellow
-    Write-Host "Host: $($System.OSVersion) | PowerShell $($System.PSVersion)" -ForegroundColor Gray
-    Write-Host "Arch: $($System.Architecture) | Current: $($System.CurrentPlatform)" -ForegroundColor Gray
+    Write-Host ($System.Mode -or "Basic mode") -ForegroundColor Yellow
+    Write-Host "Host: $($System.OSVersion -or 'Unknown') | PowerShell $($System.PSVersion -or 'Unknown')" -ForegroundColor Gray
+    Write-Host "Arch: $($System.Architecture -or 'x64') | Current: $($System.CurrentPlatform -or 'Windows x86')" -ForegroundColor Gray
     Write-Host ""
 
     Write-Host "USB TREE" -ForegroundColor Cyan
     Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host "HOST"
-    if ([string]::IsNullOrWhiteSpace($Usb.Tree) -or $Usb.Devices -eq 0) {
+    if ($null -eq $Usb -or [string]::IsNullOrWhiteSpace($Usb.Tree) -or $Usb.Devices -eq 0) {
         Write-Host "└── Nothing detected"
     } else {
         Write-Host $Usb.Tree
     }
-    Write-Host "Max hops: $($Usb.MaxHops) | Tiers: $($Usb.Tiers) | Devices: $($Usb.Devices) | Hubs: $($Usb.Hubs)" -ForegroundColor Gray
+    Write-Host "Max hops: $($Usb.MaxHops -or 0) | Tiers: $($Usb.Tiers -or 0) | Devices: $($Usb.Devices -or 0) | Hubs: $($Usb.Hubs -or 0)" -ForegroundColor Gray
     Write-Host ""
 
     Write-Host "DISPLAY TREE" -ForegroundColor Magenta
@@ -130,24 +197,28 @@ function Show-Report {
     Write-Host "STABILITY PER PLATFORM" -ForegroundColor Cyan
     Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host "Reference models (affects score):" -ForegroundColor White
-    if ([string]::IsNullOrWhiteSpace($Stability.ReferenceOutput)) {
-        Write-Host "No reference models loaded"
+    if ($null -eq $Stability -or [string]::IsNullOrWhiteSpace($Stability.ReferenceOutput)) {
+        Write-Host "No reference models loaded - check proav-shoko.json"
     } else {
         Write-Host $Stability.ReferenceOutput
     }
     Write-Host "Additional models (reference only):" -ForegroundColor White
-    if ([string]::IsNullOrWhiteSpace($Stability.AdditionalOutput)) {
-        Write-Host "No additional models loaded"
+    if ($null -eq $Stability -or [string]::IsNullOrWhiteSpace($Stability.AdditionalOutput)) {
+        Write-Host "No additional models loaded - check proav-shoko.json"
     } else {
         Write-Host $Stability.AdditionalOutput
     }
     Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host ""
 
-    $verdictColor = Get-Color $Config.colors.($Stability.Verdict.ToLower() -replace ' ','')
-    Write-Host "HOST SUMMARY: $(Format-Score $Stability.WorstScore)/10.0 - $($Stability.Verdict)" -ForegroundColor $verdictColor
+    $verdictColor = Get-Color ($Config.colors.($Stability.Verdict.ToLower() -replace ' ','') -or "white")
+    Write-Host "HOST SUMMARY: $(Format-Score $Stability.WorstScore)/10.0 - $($Stability.Verdict -or 'UNKNOWN')" -ForegroundColor $verdictColor
     Write-Host ""
 }
+
+# =============================================================================
+# HTML REPORT
+# =============================================================================
 
 function Save-HtmlReport {
     param($Config, $System, $Usb, $Display, $Stability, $Analytics = $null)
@@ -155,7 +226,7 @@ function Save-HtmlReport {
     $dateStamp = Get-Date -Format "yyyyMMdd-HHmmss"
     $outHtml = "$env:TEMP\shoko-report-$dateStamp.html"
 
-    $usbContent = if ([string]::IsNullOrWhiteSpace($Usb.Tree) -or $Usb.Devices -eq 0) { "HOST`n└── Nothing detected" } else { $Usb.Tree }
+    $usbContent = if ($null -eq $Usb -or [string]::IsNullOrWhiteSpace($Usb.Tree) -or $Usb.Devices -eq 0) { "HOST`n└── Nothing detected" } else { $Usb.Tree }
     $displayContent = if ([string]::IsNullOrWhiteSpace($Display)) { "HOST`n└── Nothing detected" } else { $Display }
 
     $analyticsSection = ""
@@ -175,7 +246,7 @@ Analytics Log (during monitoring):
 $($Analytics.Log -join "`n")
 "@
     } else {
-        $analyticsSection = "HOST SUMMARY: $(Format-Score $Stability.WorstScore)/10.0 - $($Stability.Verdict)"
+        $analyticsSection = "HOST SUMMARY: $(Format-Score $Stability.WorstScore)/10.0 - $($Stability.Verdict -or 'UNKNOWN')"
     }
 
     $htmlContent = @"
@@ -185,14 +256,14 @@ $($Analytics.Log -join "`n")
 <pre>
 Shōko Report - $dateStamp
 
-$($System.Mode)
-Host: $($System.OSVersion) | PowerShell $($System.PSVersion)
-Arch: $($System.Architecture) | Current: $($System.CurrentPlatform)
+$($System.Mode -or 'Basic mode')
+Host: $($System.OSVersion -or 'Unknown') | PowerShell $($System.PSVersion -or 'Unknown')
+Arch: $($System.Architecture -or 'x64') | Current: $($System.CurrentPlatform -or 'Windows x86')
 
 USB TREE
 ==============================================================================
 $usbContent
-Max hops: $($Usb.MaxHops) | Tiers: $($Usb.Tiers) | Devices: $($Usb.Devices) | Hubs: $($Usb.Hubs)
+Max hops: $($Usb.MaxHops -or 0) | Tiers: $($Usb.Tiers -or 0) | Devices: $($Usb.Devices -or 0) | Hubs: $($Usb.Hubs -or 0)
 
 DISPLAY TREE
 ==============================================================================
@@ -200,9 +271,9 @@ $displayContent
 STABILITY PER PLATFORM
 ==============================================================================
 Reference models (affects score):
-$($Stability.ReferenceOutput)
+$($Stability.ReferenceOutput -or 'No reference models loaded')
 Additional models (reference only):
-$($Stability.AdditionalOutput)
+$($Stability.AdditionalOutput -or 'No additional models loaded')
 ==============================================================================
 
 $analyticsSection
@@ -343,23 +414,25 @@ function Show-FinalReport {
 
     Clear-Host
 
+    $version = if ($Config -and $Config.version) { $Config.version } else { "1.1.0 (config missing)" }
+
     Write-Host "==============================================================================" -ForegroundColor Cyan
-    Write-Host "Shōko - USB + Display Diagnostic Tool v$($Config.version)" -ForegroundColor Cyan
+    Write-Host "Shōko - USB + Display Diagnostic Tool v$version" -ForegroundColor Cyan
     Write-Host "==============================================================================" -ForegroundColor Cyan
-    Write-Host $System.Mode -ForegroundColor Yellow
-    Write-Host "Host: $($System.OSVersion) | PowerShell $($System.PSVersion)" -ForegroundColor Gray
-    Write-Host "Arch: $($System.Architecture) | Current: $($System.CurrentPlatform)" -ForegroundColor Gray
+    Write-Host ($System.Mode -or "Basic mode") -ForegroundColor Yellow
+    Write-Host "Host: $($System.OSVersion -or 'Unknown') | PowerShell $($System.PSVersion -or 'Unknown')" -ForegroundColor Gray
+    Write-Host "Arch: $($System.Architecture -or 'x64') | Current: $($System.CurrentPlatform -or 'Windows x86')" -ForegroundColor Gray
     Write-Host ""
 
     Write-Host "USB TREE" -ForegroundColor Cyan
     Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host "HOST"
-    if ([string]::IsNullOrWhiteSpace($InitialData.Tree) -or $InitialData.Devices -eq 0) {
+    if ($null -eq $InitialData -or [string]::IsNullOrWhiteSpace($InitialData.Tree) -or $InitialData.Devices -eq 0) {
         Write-Host "└── Nothing detected"
     } else {
         Write-Host $InitialData.Tree
     }
-    Write-Host "Max hops: $($InitialData.MaxHops) | Tiers: $($InitialData.Tiers) | Devices: $($InitialData.Devices) | Hubs: $($InitialData.Hubs)" -ForegroundColor Gray
+    Write-Host "Max hops: $($InitialData.MaxHops -or 0) | Tiers: $($InitialData.Tiers -or 0) | Devices: $($InitialData.Devices -or 0) | Hubs: $($InitialData.Hubs -or 0)" -ForegroundColor Gray
     Write-Host ""
 
     Write-Host "DISPLAY TREE" -ForegroundColor Magenta
@@ -375,16 +448,16 @@ function Show-FinalReport {
     Write-Host "STABILITY PER PLATFORM" -ForegroundColor Cyan
     Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host "Reference models (affects score):" -ForegroundColor White
-    if ([string]::IsNullOrWhiteSpace($InitialData.ReferenceOutput)) {
-        Write-Host "No reference models loaded"
+    if ($null -eq $Stability -or [string]::IsNullOrWhiteSpace($Stability.ReferenceOutput)) {
+        Write-Host "No reference models loaded - check proav-shoko.json"
     } else {
-        Write-Host $InitialData.ReferenceOutput
+        Write-Host $Stability.ReferenceOutput
     }
     Write-Host "Additional models (reference only):" -ForegroundColor White
-    if ([string]::IsNullOrWhiteSpace($InitialData.AdditionalOutput)) {
-        Write-Host "No additional models loaded"
+    if ($null -eq $Stability -or [string]::IsNullOrWhiteSpace($Stability.AdditionalOutput)) {
+        Write-Host "No additional models loaded - check proav-shoko.json"
     } else {
-        Write-Host $InitialData.AdditionalOutput
+        Write-Host $Stability.AdditionalOutput
     }
     Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host ""
@@ -409,22 +482,26 @@ function Show-FinalReport {
     Write-Host ""
 
     $initialColor = [ConsoleColor]::Gray
-    $adjustedColor = Get-Color $Config.colors.($Analytics.AdjustedVerdict.ToLower() -replace ' ','')
+    $adjustedColor = Get-Color ($Config.colors.($Analytics.AdjustedVerdict.ToLower() -replace ' ','') -or "white")
 
     Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host "SYSTEM STATUS" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "HOST SUMMARY (initial):  $(Format-Score $Analytics.InitialScore)/10.0 - $($Analytics.InitialVerdict)" -ForegroundColor $initialColor
-    Write-Host "HOST SUMMARY (adjusted): $(Format-Score $Analytics.AdjustedScore)/10.0 - $($Analytics.AdjustedVerdict)" -ForegroundColor $adjustedColor
+    Write-Host "HOST SUMMARY (initial):  $(Format-Score $Analytics.InitialScore)/10.0 - $($Analytics.InitialVerdict -or 'UNKNOWN')" -ForegroundColor $initialColor
+    Write-Host "HOST SUMMARY (adjusted): $(Format-Score $Analytics.AdjustedScore)/10.0 - $($Analytics.AdjustedVerdict -or 'UNKNOWN')" -ForegroundColor $adjustedColor
     Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host ""
 
     Write-Host "Analytics log excerpt:" -ForegroundColor Cyan
-    $Analytics.Log | Select-Object -Last 8 | ForEach-Object { Write-Host $_ }
+    if ($Analytics.Log) {
+        $Analytics.Log | Select-Object -Last 8 | ForEach-Object { Write-Host $_ }
+    } else {
+        Write-Host "No log entries (session too short)"
+    }
 }
 
 # =============================================================================
-# MAIN – HTML prompt only at appropriate time
+# MAIN FLOW
 # =============================================================================
 
 function Main {
