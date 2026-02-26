@@ -1,8 +1,7 @@
 # =============================================================================
 # Shōko - USB + Display Diagnostic Tool v1.1.0
-# Full version (~550 lines) - USB tree fixed, no early HTML prompt,
-# Basic mode analytics message instead of 0s, 2s refresh, SYSTEM STATUS exact
-# Null-safe, no crashes on missing config/models
+# Fixed: broken Get-SystemInfo (no more True everywhere), null crashes,
+# single HOST in tree, no early HTML prompt, basic mode analytics message
 # Last updated: February 26, 2026
 # =============================================================================
 
@@ -13,7 +12,7 @@
 function Get-Color {
     param($ColorName)
     if ($null -eq $ColorName) { return [ConsoleColor]::White }
-    switch ($ColorName.ToLower()) {
+    switch ($ColorName.ToString().ToLower()) {
         "cyan"    { [ConsoleColor]::Cyan }
         "magenta" { [ConsoleColor]::Magenta }
         "yellow"  { [ConsoleColor]::Yellow }
@@ -38,22 +37,32 @@ function Format-Duration {
 }
 
 # =============================================================================
-# CONFIG LOADING (fallback if json missing)
+# CONFIG LOADING – robust + debug
 # =============================================================================
 
 function Get-Configuration {
     $jsonPath = "$PSScriptRoot\proav-shoko.json"
     if (Test-Path $jsonPath) {
         try {
-            return Get-Content $jsonPath -Raw | ConvertFrom-Json -ErrorAction Stop
+            $cfg = Get-Content $jsonPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            Write-Verbose "Loaded config from local file"
+            return $cfg
         } catch {
-            Write-Host "JSON parse error: $_" -ForegroundColor Red
+            Write-Host "Local JSON error: $_" -ForegroundColor Red
         }
     }
 
-    Write-Host "proav-shoko.json not found or invalid - using fallback config" -ForegroundColor Yellow
+    Write-Host "Trying GitHub config..." -ForegroundColor Yellow
+    try {
+        $url = "https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.json"
+        $cfg = Invoke-RestMethod -Uri $url -ErrorAction Stop
+        Write-Verbose "Loaded config from GitHub"
+        return $cfg
+    } catch {
+        Write-Host "GitHub config error: $_" -ForegroundColor Red
+    }
 
-    # Minimal fallback config to prevent null crashes
+    Write-Host "Using fallback config" -ForegroundColor Yellow
     return [PSCustomObject]@{
         version = "1.1.0 (fallback)"
         scoring = [PSCustomObject]@{
@@ -89,12 +98,28 @@ function Get-Configuration {
             notStable = "Red"
         }
         referenceModels = @(
-            [PSCustomObject]@{ name = "Windows x86"         }
-            [PSCustomObject]@{ name = "Mac Apple Silicon"   }
+            [PSCustomObject]@{ name = "Windows x86" }
+            [PSCustomObject]@{ name = "Mac Apple Silicon" }
         )
         additionalModels = @(
             [PSCustomObject]@{ name = "iPad USB-C (M-series)" }
         )
+    }
+}
+
+# =============================================================================
+# SYSTEM INFO – real detection (fix True everywhere)
+# =============================================================================
+
+function Get-SystemInfo {
+    $isAdmin = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent().IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    [PSCustomObject]@{
+        Mode             = if ($isAdmin) { "Elevated mode" } else { "Basic mode" }
+        OSVersion        = [System.Environment]::OSVersion.VersionString
+        PSVersion        = $PSVersionTable.PSVersion.ToString()
+        Architecture     = if ([Environment]::Is64BitProcess) { "x64" } else { "x86" }
+        CurrentPlatform  = "Windows x86"  # add ARM detection if needed
+        IsAdmin          = $isAdmin
     }
 }
 
@@ -126,7 +151,7 @@ function Get-PlatformStability {
                   elseif ($score -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" }
                   else { "NOT STABLE" }
 
-        $referenceOutput += "$(Format-Score $score)/10.0 $($model.name -or 'Unknown model') $status`n"
+        $referenceOutput += "$(Format-Score $score)/10.0 $($model.name -or 'Unknown') $status`n"
 
         if ($score -lt $worstReferenceScore) { $worstReferenceScore = $score }
     }
@@ -139,7 +164,7 @@ function Get-PlatformStability {
                   elseif ($score -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" }
                   else { "NOT STABLE" }
 
-        $additionalOutput += "$(Format-Score $score)/10.0 $($model.name -or 'Unknown model') $status`n"
+        $additionalOutput += "$(Format-Score $score)/10.0 $($model.name -or 'Unknown') $status`n"
     }
 
     $verdict = if ($worstReferenceScore -ge $Config.scoring.thresholds.stable) { "STABLE" }
@@ -155,7 +180,7 @@ function Get-PlatformStability {
 }
 
 # =============================================================================
-# REPORTING – single HOST, fallback text
+# REPORTING
 # =============================================================================
 
 function Show-Report {
@@ -211,85 +236,13 @@ function Show-Report {
     Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host ""
 
-    $verdictColor = Get-Color ($Config.colors.($Stability.Verdict.ToLower() -replace ' ','') -or "white")
+    $verdictColor = Get-Color ($Config.colors.($Stability.Verdict.ToString().ToLower() -replace ' ','') -or "white")
     Write-Host "HOST SUMMARY: $(Format-Score $Stability.WorstScore)/10.0 - $($Stability.Verdict -or 'UNKNOWN')" -ForegroundColor $verdictColor
     Write-Host ""
 }
 
 # =============================================================================
-# HTML REPORT
-# =============================================================================
-
-function Save-HtmlReport {
-    param($Config, $System, $Usb, $Display, $Stability, $Analytics = $null)
-
-    $dateStamp = Get-Date -Format "yyyyMMdd-HHmmss"
-    $outHtml = "$env:TEMP\shoko-report-$dateStamp.html"
-
-    $usbContent = if ($null -eq $Usb -or [string]::IsNullOrWhiteSpace($Usb.Tree) -or $Usb.Devices -eq 0) { "HOST`n└── Nothing detected" } else { $Usb.Tree }
-    $displayContent = if ([string]::IsNullOrWhiteSpace($Display)) { "HOST`n└── Nothing detected" } else { $Display }
-
-    $analyticsSection = ""
-    if ($Analytics) {
-        $analyticsSection = @"
-
-HOST SUMMARY (initial): $(Format-Score $Analytics.InitialScore)/10.0 - $($Analytics.InitialVerdict)
-HOST SUMMARY (adjusted): $(Format-Score $Analytics.AdjustedScore)/10.0 - $($Analytics.AdjustedVerdict)
-
-==============================================================================
-Analytics Summary (during monitoring):
-Total events logged: $($Analytics.Counters.total)
-Points deducted: -$([math]::Round($Analytics.Deductions,1))
-
-==============================================================================
-Analytics Log (during monitoring):
-$($Analytics.Log -join "`n")
-"@
-    } else {
-        $analyticsSection = "HOST SUMMARY: $(Format-Score $Stability.WorstScore)/10.0 - $($Stability.Verdict -or 'UNKNOWN')"
-    }
-
-    $htmlContent = @"
-<html>
-<head><title>Shōko Report $dateStamp</title></head>
-<body style='background:#000;color:#0f0;font-family:Consolas;'>
-<pre>
-Shōko Report - $dateStamp
-
-$($System.Mode -or 'Basic mode')
-Host: $($System.OSVersion -or 'Unknown') | PowerShell $($System.PSVersion -or 'Unknown')
-Arch: $($System.Architecture -or 'x64') | Current: $($System.CurrentPlatform -or 'Windows x86')
-
-USB TREE
-==============================================================================
-$usbContent
-Max hops: $($Usb.MaxHops -or 0) | Tiers: $($Usb.Tiers -or 0) | Devices: $($Usb.Devices -or 0) | Hubs: $($Usb.Hubs -or 0)
-
-DISPLAY TREE
-==============================================================================
-$displayContent
-STABILITY PER PLATFORM
-==============================================================================
-Reference models (affects score):
-$($Stability.ReferenceOutput -or 'No reference models loaded')
-Additional models (reference only):
-$($Stability.AdditionalOutput -or 'No additional models loaded')
-==============================================================================
-
-$analyticsSection
-</pre></body></html>
-"@
-
-    try {
-        $htmlContent | Out-File $outHtml -Encoding UTF8
-        Start-Process $outHtml
-    } catch {
-        Write-Host "Failed to save/open HTML: $_" -ForegroundColor Red
-    }
-}
-
-# =============================================================================
-# ANALYTICS
+# ANALYTICS (placeholder - add your real event detection)
 # =============================================================================
 
 function Start-AnalyticsSession {
@@ -482,7 +435,7 @@ function Show-FinalReport {
     Write-Host ""
 
     $initialColor = [ConsoleColor]::Gray
-    $adjustedColor = Get-Color ($Config.colors.($Analytics.AdjustedVerdict.ToLower() -replace ' ','') -or "white")
+    $adjustedColor = Get-Color ($Config.colors.($Analytics.AdjustedVerdict.ToString().ToLower() -replace ' ','') -or "white")
 
     Write-Host "==============================================================================" -ForegroundColor Cyan
     Write-Host "SYSTEM STATUS" -ForegroundColor Cyan
