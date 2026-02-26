@@ -9,9 +9,9 @@
   },
 
   "scoring": {
-    "baseFormula": "9 - maxHops",
-    "minScore": 1,
-    "maxScore": 10,
+    "baseFormula": "10.0 - maxHops",
+    "minScore": 0.0,
+    "maxScore": 10.0,
     
     "penalties": {
       "rehandshake": 0.5,
@@ -26,9 +26,9 @@
     },
     
     "thresholds": {
-      "stable": 7,
-      "potentiallyUnstable": 4,
-      "notStable": 1
+      "stable": 8.0,
+      "potentiallyUnstable": 5.0,
+      "notStable": 0.0
     }
   },
 
