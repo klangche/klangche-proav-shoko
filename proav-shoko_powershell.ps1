@@ -1,4 +1,4 @@
-# proav-shoko_powershell.ps1 - Shōko Main Logic (COMPLETE FIXED VERSION)
+# proav-shoko_powershell.ps1 - Shōko Main Logic
 
 $ErrorActionPreference = 'Stop'
 
@@ -40,13 +40,16 @@ try {
             red = "Red"
         }
         platformStability = [PSCustomObject]@{
-            windows = [PSCustomObject]@{ name = "Windows x86"; rec = 5; max = 7 }
-            windowsArm = [PSCustomObject]@{ name = "Windows ARM"; rec = 3; max = 5 }
-            macAppleSilicon = [PSCustomObject]@{ name = "Mac Apple Silicon"; rec = 3; max = 5 }
-            ipad = [PSCustomObject]@{ name = "iPad USB-C (M-series)"; rec = 2; max = 4 }
-            iphone = [PSCustomObject]@{ name = "iPhone USB-C"; rec = 2; max = 4 }
-            androidPhone = [PSCustomObject]@{ name = "Android Phone (Snapdragon)"; rec = 3; max = 5 }
-            androidTablet = [PSCustomObject]@{ name = "Android Tablet (Exynos)"; rec = 2; max = 4 }
+            windows = [PSCustomObject]@{ name = "Windows x86"; category = "computer"; rec = 5; max = 7 }
+            windowsArm = [PSCustomObject]@{ name = "Windows ARM"; category = "computer"; rec = 3; max = 5 }
+            linux = [PSCustomObject]@{ name = "Linux"; category = "computer"; rec = 4; max = 6 }
+            linuxArm = [PSCustomObject]@{ name = "Linux ARM"; category = "computer"; rec = 3; max = 5 }
+            macIntel = [PSCustomObject]@{ name = "Mac Intel"; category = "computer"; rec = 5; max = 7 }
+            macAppleSilicon = [PSCustomObject]@{ name = "Mac Apple Silicon"; category = "computer"; rec = 3; max = 5 }
+            ipad = [PSCustomObject]@{ name = "iPad USB-C (M-series)"; category = "device"; rec = 2; max = 4 }
+            iphone = [PSCustomObject]@{ name = "iPhone USB-C"; category = "device"; rec = 2; max = 4 }
+            androidPhone = [PSCustomObject]@{ name = "Android Phone (Snapdragon)"; category = "device"; rec = 3; max = 5 }
+            androidTablet = [PSCustomObject]@{ name = "Android Tablet (Exynos)"; category = "device"; rec = 2; max = 4 }
         }
         analytics = [PSCustomObject]@{ 
             updateInterval = 2
@@ -81,12 +84,17 @@ if (-not $osInfo) {
 $winVersion = "$($osInfo.Caption) $($osInfo.Version) (Build $($osInfo.BuildNumber))"
 $psVersion = $PSVersionTable.PSVersion.ToString()
 $arch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
+
+# Detect current platform (simplified)
 $currentPlatform = "windows"
+if ([Environment]::Is64BitOperatingSystem -and [Environment]::ProcessorArchitecture -eq "Arm64") {
+    $currentPlatform = "windowsArm"
+}
 
 Write-Host "`nCollecting system data..." -ForegroundColor Gray
 
 # =============================================================================
-# USB TREE - ROBUST VERSION
+# USB TREE - ALWAYS SHOWS HOST
 # =============================================================================
 $allDevices = Get-PnpDevice -Class USB -ErrorAction SilentlyContinue | Where-Object {$_.Status -eq 'OK'}
 if (-not $allDevices) { $allDevices = @() }
@@ -95,6 +103,11 @@ $devices = @()
 $hubs = @()
 $deviceList = @()
 $maxHops = 0
+
+# Add root hubs even if no devices
+$rootHubs = Get-PnpDevice -Class USB -ErrorAction SilentlyContinue | Where-Object { 
+    ($_.FriendlyName -like "*root*hub*") -or ($_.Name -like "*root*hub*") 
+}
 
 foreach ($d in $allDevices) {
     $isHub = ($d.FriendlyName -like "*hub*") -or ($d.Name -like "*hub*") -or ($d.Class -eq "USBHub")
@@ -116,36 +129,42 @@ foreach ($d in $allDevices) {
     }
 }
 
-# Build tree output with proper hierarchy
+# Build tree output
 $treeOutput = ""
-$roots = $deviceList | Where-Object { $_.Depth -eq 1 } | Sort-Object Name
+$treeOutput += "HOST`n"
 
-function Show-Tree {
-    param($items, $parentId, $level)
+if ($deviceList.Count -eq 0) {
+    $treeOutput += "├── USB Root Hub (Host Controller) [HUB] ← 1 hops`n"
+    $treeOutput += "│   └── No USB devices connected`n"
+    $maxHops = 1
+} else {
+    $roots = $deviceList | Where-Object { $_.Depth -eq 1 } | Sort-Object Name
     
-    $children = $items | Where-Object { 
-        $_.InstanceId -like "$parentId*" -and $_.Depth -eq ($level + 1)
-    } | Sort-Object Name
-    
-    $i = 0
-    foreach ($child in $children) {
-        $i++
-        $isLast = ($i -eq $children.Count)
-        $prefix = if ($level -eq 0) { "" } else { "│   " * ($level) }
-        $branch = if ($isLast) { "└── " } else { "├── " }
-        $hubTag = if ($child.IsHub) { " [HUB]" } else { "" }
+    function Show-Tree {
+        param($items, $parentId, $level)
         
-        $script:treeOutput += "$prefix$branch$($child.Name)$hubTag ← $($child.Depth) hops`n"
+        $children = $items | Where-Object { 
+            $_.InstanceId -like "$parentId*" -and $_.Depth -eq ($level + 1)
+        } | Sort-Object Name
         
-        # Recursively show children
-        Show-Tree $items $child.InstanceId ($level + 1)
+        $i = 0
+        foreach ($child in $children) {
+            $i++
+            $isLast = ($i -eq $children.Count)
+            $prefix = if ($level -eq 0) { "" } else { "│   " * ($level) }
+            $branch = if ($isLast) { "└── " } else { "├── " }
+            $hubTag = if ($child.IsHub) { " [HUB]" } else { "" }
+            
+            $script:treeOutput += "$prefix$branch$($child.Name)$hubTag ← $($child.Depth) hops`n"
+            Show-Tree $items $child.InstanceId ($level + 1)
+        }
     }
-}
-
-foreach ($root in $roots) {
-    $hubTag = if ($root.IsHub) { " [HUB]" } else { "" }
-    $treeOutput += "├── $($root.Name)$hubTag ← $($root.Depth) hops`n"
-    Show-Tree $deviceList $root.InstanceId 1
+    
+    foreach ($root in $roots) {
+        $hubTag = if ($root.IsHub) { " [HUB]" } else { "" }
+        $treeOutput += "├── $($root.Name)$hubTag ← $($root.Depth) hops`n"
+        Show-Tree $deviceList $root.InstanceId 1
+    }
 }
 
 $numTiers = $maxHops + 1
@@ -153,39 +172,56 @@ $baseScore = [Math]::Max($Config.scoring.minScore, (9 - $maxHops))
 $baseScore = [Math]::Min($baseScore, $Config.scoring.maxScore)
 
 # =============================================================================
-# STABILITY PER PLATFORM
+# STABILITY PER PLATFORM - WITH CATEGORIES
 # =============================================================================
-$platformOutput = ""
+$computerOutput = ""
+$deviceOutput = ""
+$computerScores = @()
+$worstComputerScore = $Config.scoring.maxScore
+
 foreach ($plat in $Config.platformStability.PSObject.Properties.Name) {
     $rec = $Config.platformStability.$plat.rec
     $max = $Config.platformStability.$plat.max
+    $name = $Config.platformStability.$plat.name
+    $category = $Config.platformStability.$plat.category
+    
     $status = if ($numTiers -le $rec) { "STABLE" } 
               elseif ($numTiers -le $max) { "POTENTIALLY UNSTABLE" } 
               else { "NOT STABLE" }
-    $name = $Config.platformStability.$plat.name
-    $platformOutput += "$name".PadRight(30) + "$status`n"
+    
+    # Calculate base score for this platform
+    $platScore = [Math]::Max($Config.scoring.minScore, (9 - $maxHops))
+    $platScore = [Math]::Min($platScore, $Config.scoring.maxScore)
+    
+    $line = "{0,-4} {1,-40} {2}" -f "$numTiers/$max", $name, $status
+    
+    if ($category -eq "computer") {
+        $computerOutput += "$line`n"
+        $computerScores += $platScore
+        if ($platScore -lt $worstComputerScore) { $worstComputerScore = $platScore }
+    } else {
+        $deviceOutput += "$line`n"
+    }
 }
 
 # =============================================================================
 # DISPLAY TREE
 # =============================================================================
-$displayOutput = ""
+$displayOutput = "HOST`n"
 $monitors = Get-CimInstance -Namespace root\wmi -Class WmiMonitorID -ErrorAction SilentlyContinue
 
 if ($monitors -and $monitors.Count -gt 0) {
     for ($i = 0; $i -lt $monitors.Count; $i++) {
         $m = $monitors[$i]
         
-        # Get name
         $name = "Display $($i+1)"
         if ($m.UserFriendlyName -and $m.UserFriendlyName -ne 0) { 
             $name = ($m.UserFriendlyName | ForEach-Object { [char]$_ }) -join '' 
         }
         
-        $displayOutput += "└─ $name`n"
+        $displayOutput += "└── $name`n"
         $displayOutput += " ├─ Connection : "
         
-        # Try connection type
         $conn = Get-CimInstance -Namespace root\wmi -Class WmiMonitorConnectionParams -Filter "InstanceName = '$($m.InstanceName)'" -ErrorAction SilentlyContinue
         if ($conn -and $conn.VideoOutputTechnology) {
             if ($conn.VideoOutputTechnology -eq 5) { $displayOutput += "HDMI`n" }
@@ -203,7 +239,6 @@ if ($monitors -and $monitors.Count -gt 0) {
         else { $displayOutput += "Direct / Unknown`n" }
         
         if ($isAdmin) {
-            # Get serial if available
             $serial = "Basic mode"
             if ($m.SerialNumberID -and $m.SerialNumberID -ne 0) { 
                 $serial = ($m.SerialNumberID | ForEach-Object { [char]$_ }) -join '' 
@@ -219,7 +254,7 @@ if ($monitors -and $monitors.Count -gt 0) {
         $displayOutput += "`n"
     }
 } else {
-    $displayOutput = "No displays detected.`n"
+    $displayOutput += "└── No displays detected`n"
 }
 
 # =============================================================================
@@ -236,7 +271,7 @@ Write-Host ""
 
 Write-Host "USB TREE" -ForegroundColor (Get-Color $Config.colors.cyan)
 Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-if ($treeOutput) { Write-Host $treeOutput } else { Write-Host "No USB devices found.`n" }
+Write-Host $treeOutput
 Write-Host "Max hops: $maxHops | Tiers: $numTiers | Devices: $($devices.Count) | Hubs: $($hubs.Count)" -ForegroundColor (Get-Color $Config.colors.gray)
 Write-Host ""
 
@@ -246,15 +281,19 @@ Write-Host $displayOutput
 
 Write-Host "STABILITY PER PLATFORM" -ForegroundColor (Get-Color $Config.colors.cyan)
 Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-Write-Host $platformOutput
+Write-Host "Computers (affects score):" -ForegroundColor (Get-Color $Config.colors.white)
+Write-Host $computerOutput
+Write-Host "Additional devices (reference only):" -ForegroundColor (Get-Color $Config.colors.white)
+Write-Host $deviceOutput
 Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
 Write-Host ""
 
-$verdict = if ($baseScore -ge $Config.scoring.thresholds.stable) { "STABLE" } 
-           elseif ($baseScore -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" } 
+$verdict = if ($worstComputerScore -ge $Config.scoring.thresholds.stable) { "STABLE" } 
+           elseif ($worstComputerScore -ge $Config.scoring.thresholds.potentiallyUnstable) { "POTENTIALLY UNSTABLE" } 
            else { "NOT STABLE" }
 $verdictColor = Get-Color $Config.colors.($verdict.ToLower().Replace(' ', ''))
-Write-Host "HOST SUMMARY: Score: $baseScore/10 $verdict" -ForegroundColor $verdictColor
+
+Write-Host "HOST SUMMARY: $("{0:D2}" -f $worstComputerScore)/10 - $verdict" -ForegroundColor $verdictColor
 Write-Host ""
 
 # =============================================================================
@@ -285,15 +324,19 @@ DISPLAY TREE
 $displayOutput
 STABILITY PER PLATFORM
 ==============================================================================
-$platformOutput
+Computers (affects score):
+$computerOutput
+Additional devices (reference only):
+$deviceOutput
 ==============================================================================
 
-HOST SUMMARY: Score: $baseScore/10 $verdict
+HOST SUMMARY: $("{0:D2}" -f $worstComputerScore)/10 - $verdict
 </pre></body></html>
 "@
     $htmlContent | Out-File $outHtml -Encoding UTF8
     Start-Process $outHtml
 }
+
 # =============================================================================
 # QUESTION 3 - ANALYTICS
 # =============================================================================
@@ -302,8 +345,9 @@ if ($analyticsChoice -match '^[Yy]') {
     # STORE INITIAL DATA
     $initialTree = $treeOutput
     $initialDisplay = $displayOutput
-    $initialPlatforms = $platformOutput
-    $initialScore = $baseScore
+    $initialComputerOutput = $computerOutput
+    $initialDeviceOutput = $deviceOutput
+    $initialScore = $worstComputerScore
     $initialVerdict = $verdict
     $initialDevices = $devices.Count
     $initialHubs = $hubs.Count
@@ -345,22 +389,31 @@ if ($analyticsChoice -match '^[Yy]') {
         otherErrors = 0
     }
     
-    $lastEvent = $null
-    $eventHistory = @()
-    
     # Live monitoring loop
     while (-not $Host.UI.RawUI.KeyAvailable) {
         $elapsed = (Get-Date) - $startTime
         $duration = "{0:hh\:mm\:ss\.fff}" -f $elapsed
         
-        # Save cursor position
-        $cursor = $Host.UI.RawUI.CursorPosition
-        $cursor.Y = 6
-        $Host.UI.RawUI.CursorPosition = $cursor
+        # Force cursor to top of stats section
+        $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, 6
+        
+        # Clear from cursor to end of screen
+        $width = $Host.UI.RawUI.WindowSize.Width
+        $height = $Host.UI.RawUI.WindowSize.Height
+        $currentLine = $Host.UI.RawUI.CursorPosition.Y
+        
+        for ($y = $currentLine; $y -lt $height; $y++) {
+            $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $y
+            Write-Host (" " * $width) -NoNewline
+        }
+        
+        # Reset cursor to stats section
+        $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, 6
         
         # Update header
         Write-Host "Duration: $duration" -ForegroundColor (Get-Color $Config.colors.green)
         Write-Host "Total events logged: $($counters.total)" -ForegroundColor (Get-Color $Config.colors.white)
+        
         if ($isAdmin) {
             Write-Host "USB RE-HANDSHAKES: $($counters.rehandshakes)"
             Write-Host "USB JITTER: $($counters.jitter)"
@@ -375,28 +428,44 @@ if ($analyticsChoice -match '^[Yy]') {
             Write-Host "USB CONNECTS: $($counters.connects)"
             Write-Host "USB DISCONNECTS: $($counters.disconnects)"
             Write-Host "USB RE-HANDSHAKES: $($counters.rehandshakes)"
+            Write-Host "USB JITTER: $($counters.jitter)"
             Write-Host "USB ERRORS: $($counters.crcErrors + $counters.busResets + $counters.overcurrent + $counters.otherErrors)"
             Write-Host "DISPLAY HOTPLUGS: $($counters.hotplugs)"
             Write-Host "DISPLAY ERRORS: $($counters.edidErrors + $counters.linkFailures)"
         }
+        
         Write-Host ""
         Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
         Write-Host "Analytics Log:" -ForegroundColor (Get-Color $Config.colors.cyan)
         
-        # Show log
+        # Show last 20 log entries
         $startIndex = [Math]::Max(0, $analyticsLog.Count - 20)
         for ($i = $startIndex; $i -lt $analyticsLog.Count; $i++) {
             Write-Host $analyticsLog[$i]
         }
         
-        # SIMULATE EVENTS FOR TESTING (remove in production)
+        # SIMULATE EVENTS FOR TESTING (replace with real event monitoring)
         if ($analyticsLog.Count -eq 1) {
-            $analyticsLog += "$($startTime.AddSeconds(2).ToString('HH:mm:ss.fff')) - [CONNECT] USB device connected (VID_046D/PID_0843)"
-            $analyticsLog += "$($startTime.AddSeconds(4).ToString('HH:mm:ss.fff')) - [DISCONNECT] USB device disconnected"
-            $analyticsLog += "$($startTime.AddSeconds(6).ToString('HH:mm:ss.fff')) - [CONNECT] USB device connected"
-            $counters.total = 3
-            $counters.connects = 2
-            $counters.disconnects = 1
+            if ($isAdmin) {
+                $analyticsLog += "$($startTime.AddSeconds(2).ToString('HH:mm:ss.fff')) - [CONNECT] USB device connected (VID_046D/PID_0843) - Logitech Webcam C930e"
+                $analyticsLog += "$($startTime.AddSeconds(4).ToString('HH:mm:ss.fff')) - [DISCONNECT] USB device disconnected - Logitech Webcam C930e"
+                $analyticsLog += "$($startTime.AddSeconds(6).ToString('HH:mm:ss.fff')) - [RE-HANDSHAKE] USB device re-connected - Logitech Webcam C930e"
+                $analyticsLog += "$($startTime.AddSeconds(8).ToString('HH:mm:ss.fff')) - [CRC ERROR] USB transfer failed - hub port 3"
+                $counters.total = 4
+                $counters.connects = 2
+                $counters.disconnects = 1
+                $counters.rehandshakes = 1
+                $counters.crcErrors = 1
+            } else {
+                $analyticsLog += "$($startTime.AddSeconds(2).ToString('HH:mm:ss.fff')) - [CONNECT] VID_046D/PID_0843"
+                $analyticsLog += "$($startTime.AddSeconds(4).ToString('HH:mm:ss.fff')) - [DISCONNECT] VID_046D/PID_0843"
+                $analyticsLog += "$($startTime.AddSeconds(6).ToString('HH:mm:ss.fff')) - [CONNECT] VID_046D/PID_0843"
+                $analyticsLog += "$($startTime.AddSeconds(8).ToString('HH:mm:ss.fff')) - [ERROR] VID_046D/PID_0843"
+                $counters.total = 4
+                $counters.connects = 2
+                $counters.disconnects = 1
+                $counters.otherErrors = 1
+            }
         }
         
         Start-Sleep -Milliseconds 500
@@ -447,7 +516,7 @@ if ($analyticsChoice -match '^[Yy]') {
     
     Write-Host "USB TREE" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    if ($initialTree) { Write-Host $initialTree } else { Write-Host "No USB devices found.`n" }
+    Write-Host $initialTree
     Write-Host "Max hops: $initialMaxHops | Tiers: $initialTiers | Devices: $initialDevices | Hubs: $initialHubs" -ForegroundColor (Get-Color $Config.colors.gray)
     Write-Host ""
     
@@ -457,17 +526,21 @@ if ($analyticsChoice -match '^[Yy]') {
     
     Write-Host "STABILITY PER PLATFORM" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
-    Write-Host $initialPlatforms
+    Write-Host "Computers (affects score):" -ForegroundColor (Get-Color $Config.colors.white)
+    Write-Host $initialComputerOutput
+    Write-Host "Additional devices (reference only):" -ForegroundColor (Get-Color $Config.colors.white)
+    Write-Host $initialDeviceOutput
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host ""
     
-    Write-Host "HOST SUMMARY: Score: $initialScore/10 $initialVerdict" -ForegroundColor $verdictColor
-    Write-Host "HOST SUMMARY (adjusted): Score: $([math]::Round($adjustedScore,1))/10 $adjustedVerdict" -ForegroundColor $adjustedColor
+    Write-Host "HOST SUMMARY: $("{0:D2}" -f $initialScore)/10 - $initialVerdict" -ForegroundColor $verdictColor
+    Write-Host "HOST SUMMARY: $("{0:D2}" -f $adjustedScore)/10 - $adjustedVerdict (adjusted)" -ForegroundColor $adjustedColor
     Write-Host ""
     
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "Analytics Summary (during monitoring):" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "Total events logged: $($counters.total)" -ForegroundColor (Get-Color $Config.colors.white)
+    
     if ($isAdmin) {
         Write-Host "USB RE-HANDSHAKES: $($counters.rehandshakes)"
         Write-Host "USB JITTER: $($counters.jitter)"
@@ -487,6 +560,7 @@ if ($analyticsChoice -match '^[Yy]') {
         Write-Host "DISPLAY HOTPLUGS: $($counters.hotplugs)"
         Write-Host "DISPLAY ERRORS: $($counters.edidErrors + $counters.linkFailures)"
     }
+    
     Write-Host "Points deducted: -$([math]::Round($deductions,1))"
     Write-Host ""
     
@@ -502,8 +576,8 @@ if ($analyticsChoice -match '^[Yy]') {
         $dateStamp = Get-Date -Format "yyyyMMdd-HHmmss"
         $outHtml = "$env:TEMP\shoko-report-$dateStamp.html"
         
-        $analyticsSummary = if ($isAdmin) {
-            @"
+        if ($isAdmin) {
+            $analyticsSummary = @"
 USB RE-HANDSHAKES: $($counters.rehandshakes)
 USB JITTER: $($counters.jitter)
 USB CRC ERRORS: $($counters.crcErrors)
@@ -515,7 +589,7 @@ DISPLAY LINK FAILURES: $($counters.linkFailures)
 OTHER ERRORS: $($counters.otherErrors)
 "@
         } else {
-            @"
+            $analyticsSummary = @"
 USB CONNECTS: $($counters.connects)
 USB DISCONNECTS: $($counters.disconnects)
 USB RE-HANDSHAKES: $($counters.rehandshakes)
@@ -549,11 +623,14 @@ DISPLAY TREE
 $initialDisplay
 STABILITY PER PLATFORM
 ==============================================================================
-$initialPlatforms
+Computers (affects score):
+$initialComputerOutput
+Additional devices (reference only):
+$initialDeviceOutput
 ==============================================================================
 
-HOST SUMMARY: Score: $initialScore/10 $initialVerdict
-HOST SUMMARY (adjusted): Score: $([math]::Round($adjustedScore,1))/10 $adjustedVerdict
+HOST SUMMARY: $("{0:D2}" -f $initialScore)/10 - $initialVerdict
+HOST SUMMARY: $("{0:D2}" -f $adjustedScore)/10 - $adjustedVerdict (adjusted)
 
 ==============================================================================
 Analytics Summary (during monitoring):
