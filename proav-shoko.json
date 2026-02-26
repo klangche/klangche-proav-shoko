@@ -1,12 +1,11 @@
 {
   "version": "1.0.0",
-  "lastUpdated": "2026-02-24",
+  "lastUpdated": "2026-02-26",
   
   "metadata": {
-    "toolName": "USB Tree Diagnostic Tool",
+    "toolName": "Shōko - USB + Display Diagnostic Tool",
     "author": "klangche",
-    "repository": "https://github.com/klangche/usb-script",
-    "docs": "https://github.com/klangche/usb-script/wiki"
+    "repository": "https://github.com/klangche/klangche-proav-shoko"
   },
 
   "scoring": {
@@ -16,23 +15,19 @@
     
     "penalties": {
       "rehandshake": 0.5,
+      "jitter": 1.5,
       "crc": 1.0,
       "busReset": 1.0,
       "overcurrent": 2.0,
-      "otherError": 0.5
-    },
-    
-    "penaltyLimits": {
-      "rehandshake": 2.0,
-      "crc": 3.0,
-      "busReset": 3.0,
-      "overcurrent": 4.0,
-      "otherError": 2.0
+      "hotplug": 0.5,
+      "edidError": 1.0,
+      "linkFailure": 1.0,
+      "otherError": 0.25
     },
     
     "thresholds": {
-      "stable": 9,
-      "potentiallyUnstable": 6,
+      "stable": 7,
+      "potentiallyUnstable": 4,
       "notStable": 1
     }
   },
@@ -41,196 +36,71 @@
     "windows": {
       "name": "Windows x86",
       "rec": 5,
-      "max": 7,
-      "detection": {
-        "powershell": "$env:OS -match 'Windows' -and -not [Environment]::Is64BitOperatingSystem",
-        "bash": "[[ \"$(uname -s)\" == \"MINGW\"* ]] || [[ \"$(uname -s)\" == \"CYGWIN\"* ]]"
-      }
+      "max": 7
     },
     "windowsArm": {
       "name": "Windows ARM",
       "rec": 3,
-      "max": 5,
-      "detection": {
-        "powershell": "$env:OS -match 'Windows' -and [RuntimeInformation]::ProcessArchitecture -eq 'Arm64'",
-        "bash": "[[ \"$(uname -s)\" == \"MINGW\"* ]] && [[ \"$(uname -m)\" == \"arm64\" ]]"
-      }
+      "max": 5
     },
     "linux": {
       "name": "Linux",
       "rec": 4,
-      "max": 6,
-      "detection": {
-        "powershell": "-not $env:OS -and (Test-Path '/proc')",
-        "bash": "[[ \"$(uname -s)\" == \"Linux\" ]] && [[ \"$(uname -m)\" == \"x86_64\" ]]"
-      }
+      "max": 6
     },
     "linuxArm": {
       "name": "Linux ARM",
       "rec": 3,
-      "max": 5,
-      "detection": {
-        "powershell": "-not $env:OS -and (Test-Path '/proc') -and [RuntimeInformation]::ProcessArchitecture -eq 'Arm64'",
-        "bash": "[[ \"$(uname -s)\" == \"Linux\" ]] && [[ \"$(uname -m)\" == \"aarch64\" ]]"
-      }
+      "max": 5
     },
     "macIntel": {
       "name": "Mac Intel",
       "rec": 5,
-      "max": 7,
-      "detection": {
-        "powershell": "$IsMacOS -and [RuntimeInformation]::ProcessArchitecture -eq 'X64'",
-        "bash": "[[ \"$(uname -s)\" == \"Darwin\" ]] && [[ \"$(uname -m)\" == \"x86_64\" ]]"
-      }
+      "max": 7
     },
     "macAppleSilicon": {
       "name": "Mac Apple Silicon",
       "rec": 3,
-      "max": 5,
-      "detection": {
-        "powershell": "$IsMacOS -and [RuntimeInformation]::ProcessArchitecture -eq 'Arm64'",
-        "bash": "[[ \"$(uname -s)\" == \"Darwin\" ]] && [[ \"$(uname -m)\" == \"arm64\" ]]"
-      }
+      "max": 5
     },
     "ipad": {
       "name": "iPad USB-C (M-series)",
       "rec": 2,
-      "max": 4,
-      "detection": {
-        "note": "Manual selection only"
-      }
+      "max": 4
     },
     "iphone": {
       "name": "iPhone USB-C",
       "rec": 2,
-      "max": 4,
-      "detection": {
-        "note": "Manual selection only"
-      }
+      "max": 4
     },
     "androidPhone": {
-      "name": "Android Phone (Qualcomm)",
+      "name": "Android Phone (Snapdragon)",
       "rec": 3,
-      "max": 5,
-      "detection": {
-        "note": "Manual selection only"
-      }
+      "max": 5
     },
     "androidTablet": {
       "name": "Android Tablet (Exynos)",
       "rec": 2,
-      "max": 4,
-      "detection": {
-        "note": "Manual selection only"
-      }
+      "max": 4
     }
   },
 
   "colors": {
-    "stable": "#00ff00",
-    "potentiallyUnstable": "#ffff00",
-    "notStable": "#ff00ff",
-    "cyan": "#00ffff",
-    "magenta": "#ff00ff",
-    "yellow": "#ffff00",
-    "green": "#00ff00",
-    "gray": "#c0c0c0",
-    "white": "#ffffff",
-    "header": "#00ffff",
-    "warning": "#ffff00",
-    "error": "#ff00ff",
-    "success": "#00ff00"
-  },
-
-  "messages": {
-    "en": {
-      "welcome": "USB TREE DIAGNOSTIC TOOL",
-      "platform": "Platform",
-      "noDevices": "No USB devices found.",
-      "adminPrompt": "Run with admin for maximum detail? (y/n)",
-      "adminYes": "Relaunching as admin...",
-      "adminNo": "Running without admin",
-      "adminAlready": "✓ Running with administrator privileges",
-      "deepPrompt": "Run analytics / stability monitoring? (y/n)",
-      "htmlPrompt": "Open HTML report? (y/n)",
-      "deepLogPrompt": "Open Analytics HTML report? (y/n)",
-      "exitPrompt": "Press any key to exit...",
-      "enumerating": "Enumerating USB devices...",
-      "found": "Found",
-      "devices": "devices",
-      "hubs": "hubs",
-      "furthestJumps": "Furthest jumps",
-      "numberOfTiers": "Number of tiers",
-      "totalDevices": "Total devices",
-      "totalHubs": "Total hubs",
-      "hostStatus": "Host status",
-      "stabilityScore": "Stability Score",
-      "reportSaved": "Report saved as",
-      "htmlSaved": "HTML report saved as",
-      "deepStarted": "STARTING ANALYTICS",
-      "deepComplete": "ANALYTICS COMPLETE",
-      "mode": "Mode",
-      "duration": "Duration",
-      "finalStatus": "Final status",
-      "rehandshakes": "Re-handshakes",
-      "crcFailures": "CRC Failures",
-      "busResets": "Bus Resets",
-      "overcurrent": "Overcurrent",
-      "otherErrors": "Other Errors",
-      "recentEvents": "RECENT EVENTS",
-      "noEvents": "No events detected",
-      "pressCtrlC": "Press Ctrl+C to stop monitoring",
-      "degradedBy": "degraded by"
-    }
+    "cyan": "Cyan",
+    "magenta": "Magenta",
+    "yellow": "Yellow",
+    "green": "Green",
+    "gray": "Gray",
+    "white": "White",
+    "red": "Red",
+    "stable": "Green",
+    "potentiallyUnstable": "Yellow",
+    "notStable": "Red"
   },
 
   "analytics": {
-    "basic": {
-      "name": "Basic Analytics",
-      "description": "Re-handshakes / disconnects only",
-      "counters": ["rehandshake"],
-      "headerColor": "cyan",
-      "modeColor": "yellow"
-    },
-    "deeper": {
-      "name": "Deeper Analytics",
-      "description": "CRC, resets, overcurrent, re-handshakes",
-      "counters": ["rehandshake", "crc", "busReset", "overcurrent"],
-      "headerColor": "magenta",
-      "modeColor": "green"
-    }
-  },
-
-  "reporting": {
-    "html": {
-      "template": "default",
-      "backgroundColor": "#000000",
-      "textColor": "#e0e0e0",
-      "fontFamily": "Consolas, 'Courier New', monospace",
-      "fontSize": "14px",
-      "includeTimestamps": true,
-      "includeEventLog": true,
-      "separator": "=============================================================================="
-    },
-    "text": {
-      "separator": "==============================================================================",
-      "includeTree": true,
-      "includeStability": true,
-      "includeAnalytics": true
-    }
-  },
-
-  "updates": {
-    "checkOnStart": true,
-    "configUrl": "https://raw.githubusercontent.com/klangche/usb-script/main/usb-tree-config.json",
-    "versionCheck": true,
-    "minSupportedVersion": "1.0.0"
-  },
-
-  "debug": {
-    "verbose": false,
-    "logToFile": false,
-    "saveRawData": false,
-    "dumpRegistry": false
+    "updateInterval": 5,
+    "jitterThreshold": 2,
+    "jitterWindow": 5
   }
 }
