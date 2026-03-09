@@ -206,15 +206,14 @@ function Get-SystemInfo {
     }
 }
 
-
 # =============================================================================
-# USB TREE - FLAT STRUCTURE HANDLER (WORKS WITH YOUR VM)
+# USB TREE - DUAL MODE (Handles both hierarchical and flat structures)
 # =============================================================================
 
 function Get-UsbTree {
     <#
     .SYNOPSIS
-        Enumerate USB devices – handles flat structures where all devices are at depth 2
+        Enumerate USB devices – handles both hierarchical trees and flat VM structures
     #>
     param($Config)
     
@@ -260,14 +259,14 @@ function Get-UsbTree {
         }
     }
     
-    # If all devices are at depth 2 (your VM case), show them in a flat list under a root
+    # If all devices are at depth 2 (VM case), show them in a flat list under a root
     if ($maxHops -eq 2 -and $depthGroups[2].Count -gt 0 -and (-not $depthGroups.ContainsKey(1) -or $depthGroups[1].Count -eq 0)) {
         $treeOutput += "├── USB Controllers (Virtual) ← 1 hops`n"
         
         # Group by type for better organization
         $controllers = $depthGroups[2] | Where-Object { $_.Name -like "*controller*" -or $_.Name -like "*host*" } | Sort-Object Name
-        $hubs = $depthGroups[2] | Where-Object { $_.IsHub -and $_.Name -notlike "*controller*" } | Sort-Object Name
-        $devices_list = $depthGroups[2] | Where-Object { -not $_.IsHub -and $_.Name -notlike "*controller*" } | Sort-Object Name
+        $hubList = $depthGroups[2] | Where-Object { $_.IsHub -and $_.Name -notlike "*controller*" } | Sort-Object Name
+        $deviceList = $depthGroups[2] | Where-Object { -not $_.IsHub -and $_.Name -notlike "*controller*" } | Sort-Object Name
         
         if ($controllers.Count -gt 0) {
             foreach ($c in $controllers) {
@@ -275,15 +274,15 @@ function Get-UsbTree {
             }
         }
         
-        if ($hubs.Count -gt 0) {
-            foreach ($h in $hubs) {
+        if ($hubList.Count -gt 0) {
+            foreach ($h in $hubList) {
                 $hubTag = " [HUB]"
                 $treeOutput += "│   ├── $($h.Name)$hubTag ← 2 hops`n"
             }
         }
         
-        if ($devices_list.Count -gt 0) {
-            foreach ($d in $devices_list) {
+        if ($deviceList.Count -gt 0) {
+            foreach ($d in $deviceList) {
                 $treeOutput += "│   ├── $($d.Name) ← 2 hops`n"
             }
         }
@@ -378,179 +377,84 @@ function Get-UsbTree {
     }
 }
 
-
 # =============================================================================
-# USB TREE - MultiStructure
+# DISPLAY TREE
 # =============================================================================
 
-function Get-UsbTree {
+function Get-DisplayTree {
     <#
     .SYNOPSIS
-        Enumerate USB devices – handles flat structures where all devices are at depth 2
+        Enumerate displays and connection information
     #>
     param($Config)
     
-    Write-Verbose "Enumerating USB devices"
+    Write-Verbose "Enumerating displays"
     
-    $allDevices = try {
-        Get-PnpDevice -Class USB -ErrorAction Stop | Where-Object {$_.Status -eq 'OK'}
+    $isAdmin = (Get-SystemInfo).IsAdmin
+    $displayOutput = "HOST`n"
+    
+    $monitors = try {
+        Get-CimInstance -Namespace root\wmi -Class WmiMonitorID -ErrorAction Stop
     } catch {
-        Write-Verbose "Failed to get USB devices: $_"
+        Write-Verbose "Failed to get monitor info: $_"
         @()
     }
     
-    if (-not $allDevices) { $allDevices = @() }
-    
-    $devices = @()
-    $hubs = @()
-    $maxHops = 0
-    $treeOutput = "HOST`n"
-    
-    # First, identify all devices and group by depth
-    $depthGroups = @{}
-    
-    foreach ($d in $allDevices) {
-        $isHub = ($d.FriendlyName -like "*hub*") -or ($d.Name -like "*hub*") -or ($d.Class -eq "USBHub")
-        if ($isHub) {
-            $hubs += $d
-        } else {
-            $devices += $d
-        }
-        
-        $depth = ($d.InstanceId.ToCharArray() | Where-Object {$_ -eq '\'} | Measure-Object).Count
-        if ($depth -gt $maxHops) { $maxHops = $depth }
-        
-        $name = if ($d.FriendlyName) { $d.FriendlyName } else { $d.Name }
-        
-        if (-not $depthGroups.ContainsKey($depth)) {
-            $depthGroups[$depth] = @()
-        }
-        $depthGroups[$depth] += [PSCustomObject]@{
-            Name = $name
-            IsHub = $isHub
-            InstanceId = $d.InstanceId
-        }
-    }
-    
-    # If all devices are at depth 2 (your VM case), show them in a flat list under a root
-    if ($maxHops -eq 2 -and $depthGroups[2].Count -gt 0 -and (-not $depthGroups.ContainsKey(1) -or $depthGroups[1].Count -eq 0)) {
-        $treeOutput += "├── USB Controllers (Virtual) ← 1 hops`n"
-        
-        # Group by type for better organization
-        $controllers = $depthGroups[2] | Where-Object { $_.Name -like "*controller*" -or $_.Name -like "*host*" } | Sort-Object Name
-        $hubs = $depthGroups[2] | Where-Object { $_.IsHub -and $_.Name -notlike "*controller*" } | Sort-Object Name
-        $devices_list = $depthGroups[2] | Where-Object { -not $_.IsHub -and $_.Name -notlike "*controller*" } | Sort-Object Name
-        
-        if ($controllers.Count -gt 0) {
-            foreach ($c in $controllers) {
-                $treeOutput += "│   ├── $($c.Name) ← 2 hops`n"
-            }
-        }
-        
-        if ($hubs.Count -gt 0) {
-            foreach ($h in $hubs) {
-                $hubTag = " [HUB]"
-                $treeOutput += "│   ├── $($h.Name)$hubTag ← 2 hops`n"
-            }
-        }
-        
-        if ($devices_list.Count -gt 0) {
-            foreach ($d in $devices_list) {
-                $treeOutput += "│   ├── $($d.Name) ← 2 hops`n"
-            }
-        }
-        
-        $treeOutput += "│   $($Config.messages.noDevices)`n"
-    }
-    else {
-        # Normal tree building for other cases
-        $deviceMap = @{}
-        
-        # First pass: create device objects
-        foreach ($d in $allDevices) {
-            $isHub = ($d.FriendlyName -like "*hub*") -or ($d.Name -like "*hub*") -or ($d.Class -eq "USBHub")
-            $depth = ($d.InstanceId.ToCharArray() | Where-Object {$_ -eq '\'} | Measure-Object).Count
-            $lastSlash = $d.InstanceId.LastIndexOf('\')
-            $parentId = if ($lastSlash -gt 0) { $d.InstanceId.Substring(0, $lastSlash) } else { "" }
+    if ($monitors -and $monitors.Count -gt 0) {
+        for ($i = 0; $i -lt $monitors.Count; $i++) {
+            $m = $monitors[$i]
             
-            $deviceMap[$d.InstanceId] = @{
-                Name = if ($d.FriendlyName) { $d.FriendlyName } else { $d.Name }
-                Depth = $depth
-                IsHub = $isHub
-                Parent = $parentId
-                Children = @()
+            $name = "Display $($i+1)"
+            if ($m.UserFriendlyName -and $m.UserFriendlyName -ne 0) { 
+                $name = ($m.UserFriendlyName | ForEach-Object { [char]$_ }) -join '' 
             }
-        }
-        
-        # Build parent-child relationships
-        foreach ($id in $deviceMap.Keys) {
-            $parent = $deviceMap[$id].Parent
-            if ($parent -and $deviceMap.ContainsKey($parent)) {
-                $deviceMap[$parent].Children += $id
-            }
-        }
-        
-        # Find roots
-        $roots = @()
-        foreach ($id in $deviceMap.Keys) {
-            $parent = $deviceMap[$id].Parent
-            if (-not $parent -or -not $deviceMap.ContainsKey($parent)) {
-                $roots += $id
-            }
-        }
-        
-        if ($roots.Count -eq 0) {
-            $roots = $deviceMap.Keys | Where-Object { $deviceMap[$_].Depth -eq 1 }
-        }
-        
-        $roots = $roots | Sort-Object { $deviceMap[$_].Name }
-        
-        function Write-DeviceNode {
-            param($id, $level, $isLast)
             
-            $node = $deviceMap[$id]
-            if (-not $node) { return }
+            $displayOutput += "└── $name`n"
+            $displayOutput += " ├─ Connection : "
             
-            $prefix = ""
-            if ($level -gt 0) {
-                $prefix = "│   " * ($level - 1)
-                $prefix += if ($isLast) { "└── " } else { "├── " }
+            $conn = try {
+                Get-CimInstance -Namespace root\wmi -Class WmiMonitorConnectionParams -Filter "InstanceName = '$($m.InstanceName)'" -ErrorAction Stop
+            } catch {
+                Write-Verbose "Failed to get connection params: $_"
+                $null
+            }
+            
+            if ($conn -and $conn.VideoOutputTechnology) {
+                if ($conn.VideoOutputTechnology -eq 5) { $displayOutput += "HDMI`n" }
+                elseif ($conn.VideoOutputTechnology -eq 10) { $displayOutput += "DisplayPort (External)`n" }
+                elseif ($conn.VideoOutputTechnology -eq 11) { $displayOutput += "DisplayPort (Embedded / Alt Mode)`n" }
+                else { $displayOutput += "Unknown ($($conn.VideoOutputTechnology))`n" }
             } else {
-                $prefix = "├── "
+                $displayOutput += "Basic mode`n"
             }
             
-            $hubTag = if ($node.IsHub) { " [HUB]" } else { "" }
-            $script:treeOutput += "$prefix$($node.Name)$hubTag ← $($node.Depth) hops`n"
+            $displayOutput += " ├─ Path       : "
+            if ($m.InstanceName -match "DISPLAYPORT") { $displayOutput += "DP / DP Alt Mode`n" }
+            elseif ($m.InstanceName -match "USB") { $displayOutput += "USB-C Dock / Alt Mode`n" }
+            elseif ($m.InstanceName -match "TBT|THUNDER") { $displayOutput += "Thunderbolt`n" }
+            else { $displayOutput += "Direct / Unknown`n" }
             
-            $children = $node.Children | Sort-Object { $deviceMap[$_].Name }
-            for ($i = 0; $i -lt $children.Count; $i++) {
-                Write-DeviceNode $children[$i] ($level + 1) ($i -eq $children.Count - 1)
+            if ($isAdmin) {
+                $serial = "Basic mode"
+                if ($m.SerialNumberID -and $m.SerialNumberID -ne 0) { 
+                    $serial = ($m.SerialNumberID | ForEach-Object { [char]$_ }) -join '' 
+                }
+                $displayOutput += " ├─ Size       : Basic mode`n"
+                $displayOutput += " ├─ Serial     : $serial`n"
+                $displayOutput += " └─ Analytics  : Elevated`n"
+            } else {
+                $displayOutput += " ├─ Size       : Basic mode`n"
+                $displayOutput += " ├─ Serial     : Basic mode`n"
+                $displayOutput += " └─ Analytics  : Basic mode`n"
             }
+            $displayOutput += "`n"
         }
-        
-        if ($roots.Count -eq 0) {
-            $treeOutput += "├── USB Root Hub (Host Controller) [HUB] ← 1 hops`n"
-            $treeOutput += "│   $($Config.messages.noDevices)`n"
-            $maxHops = 1
-        } else {
-            for ($i = 0; $i -lt $roots.Count; $i++) {
-                Write-DeviceNode $roots[$i] 0 ($i -eq $roots.Count - 1)
-            }
-        }
+    } else {
+        $displayOutput += "$($Config.messages.noDevices)`n"
     }
     
-    $numTiers = $maxHops + 1
-    
-    return [PSCustomObject]@{
-        Tree = $treeOutput
-        MaxHops = $maxHops
-        Tiers = $numTiers
-        Devices = $devices.Count
-        Hubs = $hubs.Count
-    }
+    return $displayOutput
 }
-
-
 
 # =============================================================================
 # PLATFORM STABILITY
@@ -646,7 +550,7 @@ function Show-Report {
     Write-Host "Max hops: $($Usb.MaxHops) | Tiers: $($Usb.Tiers) | Devices: $($Usb.Devices) | Hubs: $($Usb.Hubs)" -ForegroundColor (Get-Color $Config.colors.gray)
     Write-Host ""
     
-    Write-Host "DISPLAY TREE" -ForegroundColor (Get-Color $Config.colors.magenta)
+    Write-Host "DISPLAY TREE" -ForegroundColor (Get-Color $Config.colors.cyan)  # Changed from magenta to cyan
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host $Display
     
@@ -740,7 +644,7 @@ $analyticsSection
 }
 
 # =============================================================================
-# ANALYTICS
+# ANALYTICS - FIXED TIMER
 # =============================================================================
 
 function Start-AnalyticsSession {
@@ -768,7 +672,7 @@ function Start-AnalyticsSession {
     
     Clear-Host
     
-    # Analytics header - fixed positions for updates
+    # Analytics header
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "Shoko Analytics" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
@@ -780,7 +684,12 @@ function Start-AnalyticsSession {
     }
     Write-Host ""
     
-    # Initial stats display - will be updated
+    # Store the position of the stats section
+    $statsTop = 6
+    $statsBottom = if ($System.IsAdmin) { 17 } else { 13 }
+    
+    # Initial stats display
+    $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $statsTop
     Write-Host "Duration: 00:00:00.000" -ForegroundColor (Get-Color $Config.colors.green)
     Write-Host "Total events logged: 0" -ForegroundColor (Get-Color $Config.colors.white)
     
@@ -808,9 +717,7 @@ function Start-AnalyticsSession {
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host "Analytics Log:" -ForegroundColor (Get-Color $Config.colors.cyan)
     
-    $logStartLine = 19  # Starting line for log entries
-    
-    # Analytics counters
+    $logStartLine = $statsBottom + 3
     $analyticsLog = @()
     $startTime = Get-Date
     $analyticsLog += "$($startTime.ToString('HH:mm:ss.fff')) - Logging started"
@@ -832,18 +739,19 @@ function Start-AnalyticsSession {
     
     # Show initial log entry
     Write-Host $analyticsLog[0]
+    $currentLogLine = $logStartLine + 1
     
     while (-not $Host.UI.RawUI.KeyAvailable) {
         $elapsed = (Get-Date) - $startTime
         $duration = Format-Duration $elapsed
         
-        # Update timer (line 7)
-        $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, 7
+        # Update timer (line $statsTop)
+        $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $statsTop
         Write-Host "Duration: $duration" -ForegroundColor (Get-Color $Config.colors.green)
         
-        # Update stats based on mode
+        # Update stats
         if ($System.IsAdmin) {
-            $line = 9
+            $line = $statsTop + 2
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $line; Write-Host "USB RE-HANDSHAKES: $($counters.rehandshakes)          "
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 1); Write-Host "USB JITTER: $($counters.jitter)          "
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 2); Write-Host "USB CRC ERRORS: $($counters.crcErrors)          "
@@ -854,7 +762,7 @@ function Start-AnalyticsSession {
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 7); Write-Host "DISPLAY LINK FAILURES: $($counters.linkFailures)          "
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 8); Write-Host "OTHER ERRORS: $($counters.otherErrors)          "
         } else {
-            $line = 9
+            $line = $statsTop + 2
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $line; Write-Host "USB CONNECTS: $($counters.connects)          "
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 1); Write-Host "USB DISCONNECTS: $($counters.disconnects)          "
             $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($line + 2); Write-Host "USB RE-HANDSHAKES: $($counters.rehandshakes)          "
@@ -865,7 +773,7 @@ function Start-AnalyticsSession {
         }
         
         # Update total events line
-        $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, 8
+        $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($statsTop + 1)
         Write-Host "Total events logged: $($counters.total)          "
         
         # SIMULATE EVENTS FOR TESTING - REPLACE WITH REAL EVENT MONITORING
@@ -890,8 +798,9 @@ function Start-AnalyticsSession {
             
             foreach ($event in $newEvents) {
                 $analyticsLog += $event
-                $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($logStartLine + $analyticsLog.Count - 1)
+                $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $currentLogLine
                 Write-Host $event
+                $currentLogLine++
             }
             $counters.total = 3
         }
@@ -906,7 +815,7 @@ function Start-AnalyticsSession {
     $analyticsLog += "$($stopTime.ToString('HH:mm:ss.fff')) - Logging ended (total duration: $totalDuration)"
     
     # Show final log entry
-    $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($logStartLine + $analyticsLog.Count - 1)
+    $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $currentLogLine
     Write-Host $analyticsLog[-1]
     
     # Calculate deductions
@@ -998,7 +907,7 @@ function Show-FinalReport {
     Write-Host "Max hops: $($InitialData.MaxHops) | Tiers: $($InitialData.Tiers) | Devices: $($InitialData.Devices) | Hubs: $($InitialData.Hubs)" -ForegroundColor (Get-Color $Config.colors.gray)
     Write-Host ""
     
-    Write-Host "DISPLAY TREE" -ForegroundColor (Get-Color $Config.colors.magenta)
+    Write-Host "DISPLAY TREE" -ForegroundColor (Get-Color $Config.colors.cyan)  # Changed from magenta to cyan
     Write-Host "==============================================================================" -ForegroundColor (Get-Color $Config.colors.cyan)
     Write-Host $InitialData.Display
     
@@ -1081,6 +990,3 @@ function Main {
 
 # Run main
 Main
-
-
-
