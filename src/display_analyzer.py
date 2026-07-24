@@ -32,12 +32,10 @@ class DisplayAnalyzer:
                     'width': monitor.width,
                     'height': monitor.height,
                     'resolution': f"{monitor.width}x{monitor.height}",
-                    'is_primary': i == 0,  # screeninfo ger ingen primär-info direkt
+                    'is_primary': i == 0,
                     'x': monitor.x,
                     'y': monitor.y
                 }
                 displays.append(display_info)
         except Exception as e:
-            print(f"⚠️  Kunde inte läsa skärminformation: {e}")
-
-        return displays
+            print(f"⚠️  Kunde inte läsa skärmin
