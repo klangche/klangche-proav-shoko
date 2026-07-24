@@ -6,7 +6,6 @@ ProAV Shōko - CLI-läge (original PowerShell-port)
 import sys
 from pathlib import Path
 
-# Lägg till src i sökvägen
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.usb_analyzer import USBAnalyzer
@@ -29,22 +28,29 @@ def main():
         print("[+] Apple Silicon detected!")
     print("-" * 60)
 
-    # 2. Analysera USB-enheter
+    # 2. USB-analys - ladda hops-gränser från CSV om den finns
+    config_path = Path("hop_limits.csv")
+    if config_path.exists():
+        usb_analyzer = USBAnalyzer(str(config_path))
+        print(f"[+] Laddade hops-gränser från: {config_path}")
+    else:
+        usb_analyzer = USBAnalyzer()
+        usb_analyzer.save_hop_limits_csv("hop_limits.csv")
+        print(f"[+] Skapade standard hop_limits.csv")
+
     print("\n[+] Scanning USB devices...")
-    usb_analyzer = USBAnalyzer()
     usb_tree = usb_analyzer.build_tree()
     hops_data = usb_analyzer.calculate_hops_and_tiers(usb_tree)
-    stability = usb_analyzer.assess_stability(
-        hops_data,
-        platform_info['is_apple_silicon']
-    )
 
-    # 3. Analysera skärmar
+    # 3. Stabilitetsbedömning för alla plattformar
+    stability = usb_analyzer.assess_stability(hops_data)
+
+    # 4. Skärminformation
     print("\n[+] Scanning displays...")
     display_analyzer = DisplayAnalyzer()
     displays = display_analyzer.get_display_info()
 
-    # 4. Visa USB-träd
+    # 5. Visa USB-träd
     print("\n[+] USB Tree Structure:")
     print("-" * 60)
     if usb_tree:
@@ -52,32 +58,17 @@ def main():
     else:
         print("  Inga USB-enheter hittades.")
 
-    # 5. Hops-analys
+    # 6. Hops-analys
     print("\n[+] Hops Analysis:")
     print("-" * 60)
     print(f"Maximum Hops: {hops_data['max_hops']}")
     print(f"Total Tiers: {hops_data['max_tiers']}")
     print(f"Number of Hubs: {len([d for d in usb_tree if d.get('is_hub', False)])}")
 
-    # 6. Stabilitetsbedömning
-    print("\n[+] Stability Verdict:")
-    print("-" * 60)
+    # 7. Stabilitetsbedömning - ALLA plattformar
+    print(usb_analyzer.get_stability_summary(stability))
 
-    # Färgkodad utskrift
-    color_map = {
-        'green': '\033[92m',
-        'yellow': '\033[93m',
-        'orange': '\033[93m',
-        'red': '\033[91m'
-    }
-    reset = '\033[0m'
-    color = color_map.get(stability['color'], '')
-    print(f"{color}{stability['label']}{reset}")
-
-    if stability['warning']:
-        print(f"\n⚠️  {stability['warning']}")
-
-    # 7. Skärminformation
+    # 8. Skärminformation
     print("\n[+] Display Information:")
     print("-" * 60)
     if displays:
@@ -87,7 +78,7 @@ def main():
     else:
         print("  Inga skärmar hittades.")
 
-    # 8. Generera rapporter
+    # 9. Generera rapporter
     print("\n[+] Generating reports...")
     report_gen = ReportGenerator()
 
@@ -104,7 +95,7 @@ def main():
     if pdf_path:
         print(f"  📄 PDF:  {pdf_path}")
 
-    # 9. Öppna rapporter
+    # 10. Öppna rapporter
     print("\n[+] Opening reports...")
     report_gen.open_report(html_path)
     if pdf_path:
