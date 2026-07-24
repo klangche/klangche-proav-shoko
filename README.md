@@ -43,9 +43,9 @@ ProAV Shōko is a **platform-independent** analysis tool that:
 In modern meeting rooms we often see:
 
 - USB-C docks (Unisynk, HP, Lenovo, CalDigit, Logitech, TiGHT, Hyper, Targus...)
-- Multiple hubs chained together
-- Webcams, speakerphones, touch panels, wireless presentation dongles, external drives
-- Users' own iPads/iPhones/Android devices
+- Multiple hubs and or acive cables chained together adding tiers and hops.
+- Videobars, speakerphones, touch panels, wireless presentation dongles, external drives etc.
+- Users' own iPads/iPhones/Android/other devices
 
 **The problem:** Long chains often cause issues **only on Apple Silicon Macs** (M1/M2/M3/M4), while Windows and Intel Macs typically work flawlessly.
 
