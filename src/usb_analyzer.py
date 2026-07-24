@@ -29,20 +29,14 @@ class USBAnalyzer:
         Returns:
             Lista med trädstruktur för USB-enheter.
         """
-        # Hämta alla USB-enheter
         try:
-            # Försök att använda devpath för att bygga träd
             dev_dict = self.monitor.get_available_devices()
             self.devices = dev_dict
 
-            # Konvertera till trädstruktur
             tree = []
-            # Gruppera enheter efter devpath
             for dev_name, attributes in dev_dict.items():
-                # Extrahera devpath
                 devpath = attributes.get('devpath', '')
 
-                # Skapa nod
                 node = {
                     'name': dev_name,
                     'devpath': devpath,
@@ -54,18 +48,14 @@ class USBAnalyzer:
                     'product': attributes.get('ID_MODEL', 'Okänd produkt')
                 }
 
-                # Hitta rätt plats i trädet
                 if not devpath or devpath.count('/') <= 1:
-                    # Rotnivå
                     tree.append(node)
                 else:
-                    # Försök hitta förälder
                     parent_path = '/'.join(devpath.split('/')[:-1])
                     parent = self._find_node_by_path(tree, parent_path)
                     if parent:
                         parent['children'].append(node)
                     else:
-                        # Om förälder inte finns, lägg på rotnivå
                         tree.append(node)
 
             return tree
@@ -76,7 +66,6 @@ class USBAnalyzer:
 
     def _is_hub(self, attributes: Dict) -> bool:
         """Kontrollera om enhet är en hub."""
-        # Enkel heuristik: hubbar har ofta 'hub' i modellnamnet eller produkt-ID
         model = attributes.get(ID_MODEL, '').lower()
         product = attributes.get('ID_MODEL', '').lower()
         return 'hub' in model or 'hub' in product
@@ -86,7 +75,6 @@ class USBAnalyzer:
         for node in tree:
             if node['devpath'] == path:
                 return node
-            # Sök i barn
             if node['children']:
                 found = self._find_node_by_path(node['children'], path)
                 if found:
@@ -111,26 +99,17 @@ class USBAnalyzer:
                 'all_hops': []
             }
 
-        # Beräkna djup för varje nod
         depths = []
         devices_by_hops = defaultdict(list)
 
         def traverse(node, depth):
-            """Traversera trädet och samla djup."""
-            # Använd devpath för att räkna hops (antal nivåer)
-            if node['devpath']:
-                hops = node['devpath'].count('/')
-            else:
-                hops = depth
-
+            hops = node['devpath'].count('/') if node.get('devpath') else depth
             devices_by_hops[hops].append(node['name'])
             depths.append(hops)
 
-            # Traversera barn
             for child in node['children']:
                 traverse(child, depth + 1)
 
-        # Börja traversering
         for root in tree:
             traverse(root, 0)
 
@@ -157,7 +136,6 @@ class USBAnalyzer:
         """
         max_hops = hops_data.get('max_hops', 0)
 
-        # Standardbedömning
         if max_hops <= 3:
             verdict = {
                 'status': 'STABIL',
@@ -165,9 +143,15 @@ class USBAnalyzer:
                 'label': '🟢 STABIL',
                 'warning': None
             }
-        elif max_hops <= 5:
-            # Varning för Apple Silicon vid 5 hops
-            if is_apple_silicon and max_hops == 5:
+        elif max_hops <= 4:
+            verdict = {
+                'status': 'OK',
+                'color': 'yellow',
+                'label': '🟡 OK',
+                'warning': None
+            }
+        elif max_hops == 5:
+            if is_apple_silicon:
                 verdict = {
                     'status': 'OSÄKER',
                     'color': 'orange',
@@ -189,8 +173,10 @@ class USBAnalyzer:
                 'warning': '⚠️ Lång USB-kedja kan orsaka problem!'
             }
 
-        # Extra varning för Apple Silicon
         if is_apple_silicon and max_hops >= 4:
-            verdict['warning'] = (verdict['warning'] or '') + ' Apple Silicon rekommenderar max 4 hops.'
+            if verdict['warning']:
+                verdict['warning'] += ' Apple Silicon rekommenderar max 4 hops.'
+            else:
+                verdict['warning'] = 'Apple Silicon rekommenderar max 4 hops.'
 
         return verdict
