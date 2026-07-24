@@ -179,6 +179,20 @@ class ProAVShokoGUI:
         btn_frame = ttk.Frame(bottom_frame)
         btn_frame.pack(side=tk.RIGHT)
 
+        # Exportera CSV-knapp
+        csv_btn = tk.Button(
+            btn_frame,
+            text="📊 Export CSV Limits",
+            font=('Segoe UI', 9, 'bold'),
+            bg='#2d2d44',
+            fg='white',
+            padx=10,
+            pady=5,
+            command=self._export_csv_limits,
+            cursor='hand2'
+        )
+        csv_btn.pack(side=tk.LEFT, padx=(0, 10))
+
         html_btn = tk.Button(
             btn_frame,
             text="📄 Print HTML Report",
@@ -238,17 +252,25 @@ class ProAVShokoGUI:
             # Uppdatera plattformsetikett i GUI-tråden
             self.root.after(0, self._update_platform_label)
 
-            # 2. USB-analys
+            # 2. USB-analys - ladda hops-gränser från CSV om den finns
+            config_path = Path("hop_limits.csv")
+            if config_path.exists():
+                self.usb_analyzer = USBAnalyzer(str(config_path))
+                print(f"[+] Laddade hops-gränser från: {config_path}")
+            else:
+                self.usb_analyzer = USBAnalyzer()
+                # Spara standard CSV
+                self.usb_analyzer.save_hop_limits_csv("hop_limits.csv")
+                print(f"[+] Skapade standard hop_limits.csv")
+
             print("\n[+] Scanning USB devices...")
-            self.usb_analyzer = USBAnalyzer()
             usb_tree = self.usb_analyzer.build_tree()
             hops_data = self.usb_analyzer.calculate_hops_and_tiers(usb_tree)
-            stability = self.usb_analyzer.assess_stability(
-                hops_data,
-                self.platform_info['is_apple_silicon']
-            )
 
-            # 3. Skärminformation
+            # 3. Stabilitetsbedömning för alla plattformar
+            stability = self.usb_analyzer.assess_stability(hops_data)
+
+            # 4. Skärminformation
             print("\n[+] Scanning displays...")
             self.display_analyzer = DisplayAnalyzer()
             displays = self.display_analyzer.get_display_info()
@@ -262,8 +284,11 @@ class ProAVShokoGUI:
                 'platform_info': self.platform_info
             }
 
-            # 4. Uppdatera träd i GUI
+            # 5. Uppdatera träd i GUI
             self.root.after(0, self._update_tree_display, usb_tree, hops_data, stability, displays)
+
+            # 6. Skriv ut stabilitetssammanfattning i loggen
+            print(self.usb_analyzer.get_stability_summary(stability))
 
             print("\n[+] Analysis complete!")
             self.root.after(0, lambda: self.status_label.config(
@@ -279,7 +304,6 @@ class ProAVShokoGUI:
             ))
         finally:
             self.is_running = False
-            # Återställ stdout
             if hasattr(sys.stdout, 'original_stdout'):
                 sys.stdout = sys.stdout.original_stdout
 
@@ -300,24 +324,33 @@ class ProAVShokoGUI:
         self.tree_text.insert(tk.END, "📊 STABILITY VERDICT\n", ('header',))
         self.tree_text.insert(tk.END, "-" * 50 + "\n", ('header',))
 
-        # Färgad stabilitetsstatus
-        color_map = {
-            'green': 'stability_green',
-            'yellow': 'stability_yellow',
-            'orange': 'stability_orange',
-            'red': 'stability_red'
-        }
-        tag = color_map.get(stability['color'], 'stability_green')
-        self.tree_text.insert(tk.END, f"{stability['label']}\n", (tag,))
+        # Visa alla plattformar grupperade
+        groups = stability.get('groups', {})
+        for arch, verdicts in groups.items():
+            self.tree_text.insert(tk.END, f"\n{arch}\n", ('arch_header',))
+            for v in verdicts:
+                emoji = v['emoji']
+                name = v['name']
+                status = v['status']
+                color = v['color']
+                tag = f'stability_{color}'
+                self.tree_text.insert(tk.END, f"  {emoji} {name}  ", (tag,))
+                self.tree_text.insert(tk.END, f"({status})  ", ('info',))
+                self.tree_text.insert(tk.END, f"max {v['max_hops']} hops\n", ('dim',))
 
-        if stability['warning']:
-            self.tree_text.insert(tk.END, f"\n⚠️  {stability['warning']}\n", ('warning',))
-
-        self.tree_text.insert(tk.END, f"\nMax Hops: {hops_data['max_hops']}\n", ('info',))
-        self.tree_text.insert(tk.END, f"Total Tiers: {hops_data['max_tiers']}\n\n", ('info',))
+        # Varningar
+        warnings = [v for v in stability.get('verdicts', []) if not v['is_stable']]
+        if warnings:
+            self.tree_text.insert(tk.END, "\n⚠️  VARNINGAR:\n", ('warning_header',))
+            for w in warnings:
+                self.tree_text.insert(
+                    tk.END,
+                    f"  • {w['name']}: {w['warning']} (nuvarande hops: {w['current_hops']})\n",
+                    ('warning',)
+                )
 
         # USB-träd
-        self.tree_text.insert(tk.END, "🌳 USB TREE STRUCTURE\n", ('header',))
+        self.tree_text.insert(tk.END, "\n\n🌳 USB TREE STRUCTURE\n", ('header',))
         self.tree_text.insert(tk.END, "-" * 50 + "\n", ('header',))
 
         if usb_tree:
@@ -342,12 +375,15 @@ class ProAVShokoGUI:
 
         # Konfigurera taggar för färger
         self.tree_text.tag_configure('header', font=('Courier New', 11, 'bold'), foreground=self.colors['blue'])
-        self.tree_text.tag_configure('warning', font=('Courier New', 10, 'bold'), foreground=self.colors['orange'])
+        self.tree_text.tag_configure('arch_header', font=('Courier New', 10, 'bold'), foreground=self.colors['blue'])
+        self.tree_text.tag_configure('warning_header', font=('Courier New', 10, 'bold'), foreground=self.colors['orange'])
+        self.tree_text.tag_configure('warning', font=('Courier New', 10), foreground=self.colors['orange'])
         self.tree_text.tag_configure('info', foreground=self.colors['fg'])
-        self.tree_text.tag_configure('stability_green', foreground=self.colors['green'], font=('Courier New', 12, 'bold'))
-        self.tree_text.tag_configure('stability_yellow', foreground=self.colors['yellow'], font=('Courier New', 12, 'bold'))
-        self.tree_text.tag_configure('stability_orange', foreground=self.colors['orange'], font=('Courier New', 12, 'bold'))
-        self.tree_text.tag_configure('stability_red', foreground=self.colors['red'], font=('Courier New', 12, 'bold'))
+        self.tree_text.tag_configure('dim', foreground='#666666')
+        self.tree_text.tag_configure('stability_green', foreground=self.colors['green'])
+        self.tree_text.tag_configure('stability_yellow', foreground=self.colors['yellow'])
+        self.tree_text.tag_configure('stability_orange', foreground=self.colors['orange'])
+        self.tree_text.tag_configure('stability_red', foreground=self.colors['red'])
 
         # Flytta till toppen
         self.tree_text.see(1.0)
@@ -364,7 +400,6 @@ class ProAVShokoGUI:
             line = f"{indent}{icon} {node.get('model', 'Okänd')}{hub_tag}  hops: {hops}\n"
             self.tree_text.insert(tk.END, line, ('info',))
 
-            # Barn
             if node.get('children'):
                 self._render_tree_to_text(node['children'], level + 1)
 
@@ -385,13 +420,35 @@ class ProAVShokoGUI:
         if messagebox.askyesno("Återställ", "Vill du återställa och starta om analysen?"):
             self._start_analysis()
 
+    def _export_csv_limits(self):
+        """Exportera hops-gränser som CSV."""
+        if not self.usb_analyzer:
+            messagebox.showwarning("Ingen analys", "Kör först en analys!")
+            return
+
+        default_name = f"hop_limits_{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.csv"
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            initialfile=default_name,
+            title="Spara hops-gränser som CSV"
+        )
+
+        if not file_path:
+            return
+
+        try:
+            self.usb_analyzer.save_hop_limits_csv(file_path)
+            messagebox.showinfo("Klart", f"CSV-fil sparad:\n{file_path}")
+        except Exception as e:
+            messagebox.showerror("Fel", f"Kunde inte spara CSV: {e}")
+
     def _print_html_report(self):
         """Generera och spara HTML-rapport."""
         if not self.current_data:
             messagebox.showwarning("Ingen data", "Kör först en analys!")
             return
 
-        # Fråga om filnamn
         default_name = f"proav-shoko-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.html"
         file_path = filedialog.asksaveasfilename(
             defaultextension=".html",
@@ -427,7 +484,6 @@ class ProAVShokoGUI:
             messagebox.showwarning("Ingen data", "Kör först en analys!")
             return
 
-        # Fråga om filnamn
         default_name = f"proav-shoko-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.pdf"
         file_path = filedialog.asksaveasfilename(
             defaultextension=".pdf",
@@ -442,7 +498,6 @@ class ProAVShokoGUI:
         try:
             self.status_label.config(text="⏳ Genererar PDF...", foreground=self.colors['yellow'])
 
-            # Skapa temporär HTML
             import tempfile
             with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as tmp:
                 tmp_path = tmp.name
@@ -457,10 +512,8 @@ class ProAVShokoGUI:
                 custom_path=tmp_path
             )
 
-            # Konvertera till PDF
             pdf_path = self.report_generator.generate_pdf_report(html_path, custom_path=file_path)
 
-            # Städa bort temporär HTML
             try:
                 Path(tmp_path).unlink()
             except:
