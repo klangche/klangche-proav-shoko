@@ -15,12 +15,10 @@ Analysera, verifiera och felsök USB-anslutningar i mötesrum och BYOD-miljöer.
 - [Översikt](#-översikt)
 - [Varför ProAV Shōko?](#-varför-proav-shōko)
 - [Funktioner](#-funktioner)
-- [Flödesschema](#-flödesschema)
 - [Installation](#-installation)
 - [Användning](#-användning)
 - [Teknisk stack](#-teknisk-stack)
 - [Bygga från källa](#-bygga-från-källa)
-- [Felsökning](#-felsökning)
 - [Licens](#-licens)
 
 ---
@@ -67,49 +65,24 @@ I moderna mötesrum ser vi ofta:
 | 🖥️ **Skärminformation** | Visa anslutna skärmar med upplösning | ✅ |
 | 📄 **HTML-rapport** | Mörk bakgrund, identisk med terminalen | ✅ |
 | 📄 **PDF-rapport** | Lång, kontinuerlig sida för utskrift | ✅ |
-| 🔄 **Automatisk öppning** | Rapporter öppnas direkt i webbläsare/PDF-visare | ✅ |
-| ⚡ **Realtidsövervakning** | USB-anslutning/händelser (kräver admin) | ❌ *Ej portad* |
-| 🔌 **PD-information** | Power Delivery-detaljer | ❌ *Ej portad* |
+| 🖥️ **GUI** | Live-överblick med träd och logg | ✅ |
 
 ---
 
-## 🔄 Flödesschema
+## 🚀 Installation
 
-```mermaid
-graph TD
-    Start([Start]) --> Platform[Plattformsinformation]
-    Platform --> USB[Skanna USB-enheter]
-    USB --> Tree[Bygg USB-träd]
-    Tree --> Hops[Beräkna Hops & Tiers]
-    Hops --> Stability{Stabilitetsbedömning}
-    
-    Stability --> CheckHops{Hops <= 3?}
-    CheckHops -->|Ja| Green[🟢 STABIL]
-    CheckHops -->|Nej| CheckHops5{Hops <= 5?}
-    CheckHops5 -->|Ja| Yellow[🟡 OK]
-    CheckHops5 -->|Nej| Red[🔴 INSTABIL]
-    
-    CheckHops5 --> AppleSilicon{Apple Silicon?}
-    AppleSilicon -->|Ja & Hops=5| Orange[🟠 OSÄKER - Varning]
-    AppleSilicon -->|Nej| Yellow
-    
-    Green --> Display[Skanna skärmar]
-    Yellow --> Display
-    Orange --> Display
-    Red --> Display
-    
-    Display --> Report[Generera rapporter]
-    Report --> HTML[HTML-rapport]
-    Report --> PDF[PDF-rapport]
-    
-    HTML --> Open[Öppna rapporter]
-    PDF --> Open
-    Open --> Done([Klart])
+### 📦 För användare (körbar fil)
 
-    style Start fill:#1a1a2e,color:#fff
-    style Done fill:#1a1a2e,color:#fff
-    style Green fill:#00cc66,color:#000
-    style Yellow fill:#ffcc00,color:#000
-    style Orange fill:#ff8800,color:#000
-    style Red fill:#ff3333,color:#fff
-    style AppleSilicon fill:#ff8800,color:#000
+Ladda ner den senaste versionen för ditt operativsystem från [Releases](https://github.com/klangche/proav-shoko/releases):
+
+| Plattform | Fil | Storlek |
+|-----------|-----|---------|
+| 🪟 **Windows** | `proav-shoko-windows.exe` | ~15 MB |
+| 🍎 **macOS (Intel)** | `proav-shoko-macos-intel` | ~18 MB |
+| 🍎 **macOS (Apple Silicon)** | `proav-shoko-macos-arm64` | ~18 MB |
+| 🐧 **Linux** | `proav-shoko-linux` | ~15 MB |
+
+```bash
+# Exempel: Kör direkt på macOS
+chmod +x proav-shoko-macos-arm64
+./proav-shoko-macos-arm64
