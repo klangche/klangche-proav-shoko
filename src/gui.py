@@ -8,7 +8,7 @@ import threading
 import queue
 import sys
 from datetime import datetime
-from io import StringIO
+from pathlib import Path
 from typing import Optional
 
 from src.usb_analyzer import USBAnalyzer
@@ -280,7 +280,8 @@ class ProAVShokoGUI:
         finally:
             self.is_running = False
             # Återställ stdout
-            sys.stdout = sys.stdout.original_stdout if hasattr(sys.stdout, 'original_stdout') else sys.stdout
+            if hasattr(sys.stdout, 'original_stdout'):
+                sys.stdout = sys.stdout.original_stdout
 
     def _update_platform_label(self):
         """Uppdatera plattformsetiketten."""
@@ -295,20 +296,19 @@ class ProAVShokoGUI:
         self.tree_text.delete(1.0, tk.END)
 
         # Stabilitetsrubrik
-        color_map = {
-            'green': self.colors['green'],
-            'yellow': self.colors['yellow'],
-            'orange': self.colors['orange'],
-            'red': self.colors['red']
-        }
-        color = color_map.get(stability['color'], self.colors['fg'])
-
         self.tree_text.insert(tk.END, "\n")
         self.tree_text.insert(tk.END, "📊 STABILITY VERDICT\n", ('header',))
         self.tree_text.insert(tk.END, "-" * 50 + "\n", ('header',))
 
         # Färgad stabilitetsstatus
-        self.tree_text.insert(tk.END, f"{stability['label']}\n", ('stability', stability['color']))
+        color_map = {
+            'green': 'stability_green',
+            'yellow': 'stability_yellow',
+            'orange': 'stability_orange',
+            'red': 'stability_red'
+        }
+        tag = color_map.get(stability['color'], 'stability_green')
+        self.tree_text.insert(tk.END, f"{stability['label']}\n", (tag,))
 
         if stability['warning']:
             self.tree_text.insert(tk.END, f"\n⚠️  {stability['warning']}\n", ('warning',))
@@ -344,19 +344,10 @@ class ProAVShokoGUI:
         self.tree_text.tag_configure('header', font=('Courier New', 11, 'bold'), foreground=self.colors['blue'])
         self.tree_text.tag_configure('warning', font=('Courier New', 10, 'bold'), foreground=self.colors['orange'])
         self.tree_text.tag_configure('info', foreground=self.colors['fg'])
-
-        # Stabilitetsfärger
-        for color_name, hex_color in color_map.items():
-            self.tree_text.tag_configure('stability', foreground=hex_color, font=('Courier New', 12, 'bold'))
-        # Specifik tagg för stability med färg
         self.tree_text.tag_configure('stability_green', foreground=self.colors['green'], font=('Courier New', 12, 'bold'))
         self.tree_text.tag_configure('stability_yellow', foreground=self.colors['yellow'], font=('Courier New', 12, 'bold'))
         self.tree_text.tag_configure('stability_orange', foreground=self.colors['orange'], font=('Courier New', 12, 'bold'))
         self.tree_text.tag_configure('stability_red', foreground=self.colors['red'], font=('Courier New', 12, 'bold'))
-
-        # Återanvänd stability-tagg med rätt färg
-        # Vi använder en generisk tagg och sätter färg via textinmatning istället
-        # För enkelhet: skapa en tagg per färg
 
         # Flytta till toppen
         self.tree_text.see(1.0)
@@ -369,15 +360,6 @@ class ProAVShokoGUI:
             icon = "📌" if is_hub else "🖥️"
             hub_tag = " [HUB]" if is_hub else ""
             hops = node['devpath'].count('/') if node.get('devpath') else 0
-
-            # Bestäm färg baserat på hops
-            color = self.colors['fg']
-            if hops >= 6:
-                color = self.colors['red']
-            elif hops >= 5:
-                color = self.colors['orange']
-            elif hops >= 4:
-                color = self.colors['yellow']
 
             line = f"{indent}{icon} {node.get('model', 'Okänd')}{hub_tag}  hops: {hops}\n"
             self.tree_text.insert(tk.END, line, ('info',))
@@ -432,8 +414,9 @@ class ProAVShokoGUI:
                 self.current_data['platform_info'],
                 custom_path=file_path
             )
-            self.status_label.config(text=f"✅ HTML sparad: {html_path}", foreground=self.colors['green'])
+            self.status_label.config(text=f"✅ HTML sparad", foreground=self.colors['green'])
             print(f"\n[+] HTML Report saved: {html_path}")
+            messagebox.showinfo("Klart", f"HTML-rapport sparad:\n{html_path}")
         except Exception as e:
             messagebox.showerror("Fel", f"Kunde inte generera HTML-rapport: {e}")
             self.status_label.config(text=f"❌ Fel: {e}", foreground=self.colors['red'])
@@ -458,23 +441,35 @@ class ProAVShokoGUI:
 
         try:
             self.status_label.config(text="⏳ Genererar PDF...", foreground=self.colors['yellow'])
-            self.report_generator = ReportGenerator()
 
-            # Generera HTML först
+            # Skapa temporär HTML
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as tmp:
+                tmp_path = tmp.name
+
+            self.report_generator = ReportGenerator()
             html_path = self.report_generator.generate_html_report(
                 self.current_data['usb_tree'],
                 self.current_data['hops_data'],
                 self.current_data['stability'],
                 self.current_data['displays'],
-                self.current_data['platform_info']
+                self.current_data['platform_info'],
+                custom_path=tmp_path
             )
 
             # Konvertera till PDF
             pdf_path = self.report_generator.generate_pdf_report(html_path, custom_path=file_path)
 
+            # Städa bort temporär HTML
+            try:
+                Path(tmp_path).unlink()
+            except:
+                pass
+
             if pdf_path:
-                self.status_label.config(text=f"✅ PDF sparad: {pdf_path}", foreground=self.colors['green'])
+                self.status_label.config(text=f"✅ PDF sparad", foreground=self.colors['green'])
                 print(f"\n[+] PDF Report saved: {pdf_path}")
+                messagebox.showinfo("Klart", f"PDF-rapport sparad:\n{pdf_path}")
             else:
                 messagebox.showwarning("Varning", "PDF-generering misslyckades. Kontrollera att weasyprint är installerat.")
         except Exception as e:
