@@ -50,16 +50,82 @@ class ReportGenerator:
         else:
             filename = self.output_dir / f"proav-shoko_report_{self.timestamp}.html"
 
+        # Skapa katalogen om den inte finns
+        filename.parent.mkdir(parents=True, exist_ok=True)
+
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(html_content)
 
         return str(filename)
 
-    def _build_html_content(self, usb_tree, hops_data, stability, displays, platform_info) -> str:
+    def _build_stability_html(self, stability_data: Dict[str, Any]) -> str:
+        """Bygger HTML för stabilitetsöversikt med alla plattformar."""
+        lines = []
+        groups = stability_data.get('groups', {})
+
+        # Färgkarta för border-left
+        color_map = {
+            'green': '#00cc66',
+            'yellow': '#ffcc00',
+            'orange': '#ff8800',
+            'red': '#ff3333'
+        }
+
+        for arch, verdicts in groups.items():
+            lines.append(f'<h4 style="color:#88ccff;margin:15px 0 10px 0;">{arch}</h4>')
+            lines.append('<div style="display:flex;flex-wrap:wrap;gap:10px;margin:5px 0 15px 0;">')
+            for v in verdicts:
+                color = v['color']
+                emoji = v['emoji']
+                name = v['name']
+                status = v['status']
+                max_hops = v['max_hops']
+                border_color = color_map.get(color, '#666')
+                lines.append(f'''
+                    <div style="background:#1a1a2e;padding:10px 15px;border-radius:6px;border-left:3px solid {border_color};">
+                        <span style="font-size:1.2em;">{emoji}</span>
+                        <span style="font-weight:bold;">{name}</span>
+                        <span style="color:#888;font-size:0.9em;">({status})</span>
+                        <span style="color:#666;font-size:0.8em;">max {max_hops} hops</span>
+                    </div>
+                ''')
+            lines.append('</div>')
+
+        # Varningar
+        warnings = [v for v in stability_data.get('verdicts', []) if not v['is_stable']]
+        if warnings:
+            lines.append('''
+                <div style="background:#ff3333;color:#fff;padding:12px 20px;border-radius:8px;margin:15px 0;">
+                    <span style="font-weight:bold;">⚠️ VARNINGAR:</span><br>
+            ''')
+            for w in warnings:
+                lines.append(f'• {w["name"]}: {w["warning"]} (nuvarande hops: {w["current_hops"]})<br>')
+            lines.append('</div>')
+
+        return ''.join(lines)
+
+    def _build_html_content(
+        self,
+        usb_tree: List[Dict],
+        hops_data: Dict[str, Any],
+        stability: Dict[str, Any],
+        displays: List[Dict[str, Any]],
+        platform_info: Dict[str, Any]
+    ) -> str:
         """Bygger HTML-innehållet."""
         usb_html = self._render_tree(usb_tree)
         display_html = self._render_displays(displays)
+        stability_html = self._build_stability_html(stability)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Bestäm övergripande färg för sammanfattning
+        overall_color = stability.get('overall_worst', 'STABIL')
+        color_map = {
+            'STABIL': '#00cc66',
+            'OSÄKER': '#ff8800',
+            'INSTABIL': '#ff3333'
+        }
+        summary_color = color_map.get(overall_color, '#00cc66')
 
         return f"""
 <!DOCTYPE html>
@@ -92,27 +158,52 @@ class ReportGenerator:
             padding-bottom: 10px;
             margin-bottom: 20px;
         }}
-        .subtitle {{ color: #aaa; font-size: 0.9em; margin-bottom: 30px; }}
+        h2 {{
+            color: #00d4ff;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            font-size: 1.4em;
+        }}
+        h3 {{
+            color: #88ccff;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }}
+        .subtitle {{
+            color: #aaa;
+            font-size: 0.9em;
+            margin-bottom: 30px;
+        }}
         .card {{
             background: #1a1a2e;
-            border-left: 4px solid #00d4ff;
+            border-left: 4px solid {summary_color};
             padding: 15px 20px;
             margin: 20px 0;
             border-radius: 6px;
         }}
-        .card-green {{ border-left-color: #00cc66; }}
-        .card-yellow {{ border-left-color: #ffcc00; }}
-        .card-orange {{ border-left-color: #ff8800; }}
-        .card-red {{ border-left-color: #ff3333; }}
         .tree {{
             font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
             font-size: 0.9em;
             padding: 10px 0;
         }}
-        .tree ul {{ list-style: none; padding-left: 20px; }}
-        .tree li {{ padding: 3px 0; border-left: 2px dotted #444; padding-left: 15px; margin-left: 10px; }}
-        .tree .hub {{ color: #ffaa00; font-weight: bold; }}
-        .tree .device {{ color: #88ccff; }}
+        .tree ul {{
+            list-style: none;
+            padding-left: 20px;
+        }}
+        .tree li {{
+            padding: 3px 0;
+            border-left: 2px dotted #444;
+            padding-left: 15px;
+            margin-left: 10px;
+        }}
+        .tree .hub {{
+            color: #ffaa00;
+            font-weight: bold;
+        }}
+        .tree .device {{
+            color: #88ccff;
+        }}
         .hops-badge {{
             background: #333;
             color: #fff;
@@ -134,8 +225,15 @@ class ReportGenerator:
             text-align: center;
             border: 1px solid #333;
         }}
-        .stat-value {{ font-size: 2em; font-weight: bold; color: #00d4ff; }}
-        .stat-label {{ color: #aaa; font-size: 0.8em; }}
+        .stat-value {{
+            font-size: 2em;
+            font-weight: bold;
+            color: #00d4ff;
+        }}
+        .stat-label {{
+            color: #aaa;
+            font-size: 0.8em;
+        }}
         .display-grid {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -149,34 +247,10 @@ class ReportGenerator:
             border: 1px solid #333;
             text-align: center;
         }}
-        .display-item .resolution {{ font-size: 1.4em; color: #00d4ff; font-weight: bold; }}
-        .stability-badge {{
-            display: inline-block;
-            padding: 10px 25px;
-            border-radius: 30px;
+        .display-item .resolution {{
+            font-size: 1.4em;
+            color: #00d4ff;
             font-weight: bold;
-            font-size: 1.2em;
-        }}
-        .badge-green {{ background: #00cc66; color: #000; }}
-        .badge-yellow {{ background: #ffcc00; color: #000; }}
-        .badge-orange {{ background: #ff8800; color: #000; }}
-        .badge-red {{ background: #ff3333; color: #fff; }}
-        .warning {{
-            background: #ff3333;
-            color: #fff;
-            padding: 12px 20px;
-            border-radius: 8px;
-            margin: 15px 0;
-            font-weight: bold;
-        }}
-        .warning-icon {{ font-size: 1.5em; margin-right: 10px; }}
-        .footer {{
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #333;
-            color: #666;
-            font-size: 0.8em;
-            text-align: center;
         }}
         .platform-info {{
             display: flex;
@@ -193,7 +267,53 @@ class ReportGenerator:
             border-radius: 20px;
             font-size: 0.8em;
         }}
-        .apple-silicon {{ background: #ff8800; color: #000; font-weight: bold; }}
+        .apple-silicon {{
+            background: #ff8800;
+            color: #000;
+            font-weight: bold;
+        }}
+        .footer {{
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #333;
+            color: #666;
+            font-size: 0.8em;
+            text-align: center;
+        }}
+        .warning-box {{
+            background: #ff3333;
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+            font-weight: bold;
+        }}
+        .stability-grid {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 5px 0 15px 0;
+        }}
+        .stability-item {{
+            background: #1a1a2e;
+            padding: 10px 15px;
+            border-radius: 6px;
+            border-left: 3px solid #666;
+        }}
+        .stability-item .emoji {{
+            font-size: 1.2em;
+        }}
+        .stability-item .name {{
+            font-weight: bold;
+        }}
+        .stability-item .status {{
+            color: #888;
+            font-size: 0.9em;
+        }}
+        .stability-item .max-hops {{
+            color: #666;
+            font-size: 0.8em;
+        }}
     </style>
 </head>
 <body>
@@ -204,16 +324,16 @@ class ReportGenerator:
         <div class="platform-info">
             <span class="platform-tag">🖥️ {platform_info['os']} {platform_info['version']}</span>
             <span class="platform-tag">🧠 {platform_info['architecture']}</span>
-            {'''<span class="platform-tag apple-silicon">🍎 Apple Silicon</span>''' if platform_info['is_apple_silicon'] else ''}
+            {'''<span class="platform-tag apple-silicon">🍎 Apple Silicon</span>''' if platform_info.get('is_apple_silicon', False) else ''}
         </div>
 
-        <div class="card card-{stability['color']}">
-            <h3>📊 Stabilitetsbedömning</h3>
-            <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
-                <span class="stability-badge badge-{stability['color']}">{stability['label']}</span>
-                <span>Max hops: <strong>{hops_data['max_hops']}</strong> • Tiers: <strong>{hops_data['max_tiers']}</strong></span>
-            </div>
-            {f'''<div class="warning"><span class="warning-icon">⚠️</span> {stability['warning']}</div>''' if stability['warning'] else ''}
+        <h2>📊 Stabilitetsbedömning</h2>
+        <div class="card">
+            <p style="margin-bottom:10px;">
+                <strong>Max hops i kedjan:</strong> {hops_data['max_hops']} &bull;
+                <strong>Tiers:</strong> {hops_data['max_tiers']}
+            </p>
+            {stability_html}
         </div>
 
         <div class="stats">
@@ -238,10 +358,14 @@ class ReportGenerator:
         <h2>🌳 USB-träd</h2>
         <div class="tree">{usb_html}</div>
 
-        <h2 style="margin-top: 40px;">🖥️ Anslutna skärmar</h2>
+        <h2>🖥️ Anslutna skärmar</h2>
         <div class="display-grid">{display_html}</div>
 
-        <div class="footer">Genererad av ProAV Shōko v1.0.0 • {timestamp}</div>
+        <div class="footer">
+            Genererad av ProAV Shōko v1.0.0 &bull; {timestamp}
+            <br>
+            <span style="color:#444;">hop_limits.csv kan redigeras för att anpassa stabilitetsgränser per plattform</span>
+        </div>
     </div>
 </body>
 </html>
@@ -255,7 +379,7 @@ class ReportGenerator:
         html = "<ul>"
         for node in tree:
             is_hub = node.get('is_hub', False)
-            icon = "🔌" if is_hub else "🖥️"
+            icon = "📌" if is_hub else "🖥️"
             cls = "hub" if is_hub else "device"
             devpath = node.get('devpath', '')
             hops = devpath.count('/') if devpath else 0
@@ -311,6 +435,9 @@ class ReportGenerator:
             else:
                 pdf_filename = Path(html_path).with_suffix('.pdf')
 
+            # Skapa katalogen om den inte finns
+            pdf_filename.parent.mkdir(parents=True, exist_ok=True)
+
             HTML(filename=html_path).write_pdf(str(pdf_filename))
             return str(pdf_filename)
 
@@ -323,11 +450,11 @@ class ReportGenerator:
         try:
             abs_path = os.path.abspath(file_path)
 
-            if sys.platform == 'darwin':
+            if sys.platform == 'darwin':  # macOS
                 subprocess.run(['open', abs_path], check=False)
-            elif sys.platform == 'win32':
+            elif sys.platform == 'win32':  # Windows
                 os.startfile(abs_path)
-            else:
+            else:  # Linux och övriga
                 webbrowser.open(f'file://{abs_path}')
 
             print(f"📂 Öppnade: {abs_path}")
