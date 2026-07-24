@@ -33,6 +33,7 @@ class ReportGenerator:
         stability: Dict[str, Any],
         displays: List[Dict[str, Any]],
         platform_info: Dict[str, Any],
+        platform_notes: Optional[List[Dict[str, str]]] = None,
         custom_path: Optional[str] = None
     ) -> str:
         """
@@ -42,7 +43,7 @@ class ReportGenerator:
             Sökväg till HTML-filen.
         """
         html_content = self._build_html_content(
-            usb_tree, hops_data, stability, displays, platform_info
+            usb_tree, hops_data, stability, displays, platform_info, platform_notes
         )
 
         if custom_path:
@@ -50,7 +51,6 @@ class ReportGenerator:
         else:
             filename = self.output_dir / f"proav-shoko_report_{self.timestamp}.html"
 
-        # Skapa katalogen om den inte finns
         filename.parent.mkdir(parents=True, exist_ok=True)
 
         with open(filename, 'w', encoding='utf-8') as f:
@@ -63,7 +63,6 @@ class ReportGenerator:
         lines = []
         groups = stability_data.get('groups', {})
 
-        # Färgkarta för border-left
         color_map = {
             'green': '#00cc66',
             'yellow': '#ffcc00',
@@ -91,7 +90,6 @@ class ReportGenerator:
                 ''')
             lines.append('</div>')
 
-        # Varningar
         warnings = [v for v in stability_data.get('verdicts', []) if not v['is_stable']]
         if warnings:
             lines.append('''
@@ -104,21 +102,42 @@ class ReportGenerator:
 
         return ''.join(lines)
 
+    def _build_notes_html(self, platform_notes: Optional[List[Dict[str, str]]]) -> str:
+        """Bygger HTML för noteringar längst ner i rapporten."""
+        if not platform_notes:
+            return ''
+
+        lines = []
+        lines.append('<div style="margin-top:40px;padding-top:20px;border-top:2px solid #333;">')
+        lines.append('<h3 style="color:#888;font-size:0.9em;margin-bottom:10px;">📝 Plattformsnoteringar</h3>')
+        lines.append('<div style="font-size:0.7em;color:#666;line-height:1.4;">')
+
+        for note in platform_notes:
+            platform = note.get('platform', '').replace('_', ' ').title()
+            description = note.get('description', '')
+            note_text = note.get('note', '')
+            lines.append(f'<p style="margin:4px 0;"><strong>{platform}</strong> ({description}): {note_text}</p>')
+
+        lines.append('</div>')
+        lines.append('</div>')
+        return ''.join(lines)
+
     def _build_html_content(
         self,
         usb_tree: List[Dict],
         hops_data: Dict[str, Any],
         stability: Dict[str, Any],
         displays: List[Dict[str, Any]],
-        platform_info: Dict[str, Any]
+        platform_info: Dict[str, Any],
+        platform_notes: Optional[List[Dict[str, str]]] = None
     ) -> str:
         """Bygger HTML-innehållet."""
         usb_html = self._render_tree(usb_tree)
         display_html = self._render_displays(displays)
         stability_html = self._build_stability_html(stability)
+        notes_html = self._build_notes_html(platform_notes)
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # Bestäm övergripande färg för sammanfattning
         overall_color = stability.get('overall_worst', 'STABIL')
         color_map = {
             'STABIL': '#00cc66',
@@ -273,11 +292,11 @@ class ReportGenerator:
             font-weight: bold;
         }}
         .footer {{
-            margin-top: 40px;
-            padding-top: 20px;
+            margin-top: 20px;
+            padding-top: 15px;
             border-top: 1px solid #333;
             color: #666;
-            font-size: 0.8em;
+            font-size: 0.7em;
             text-align: center;
         }}
         .warning-box {{
@@ -287,32 +306,6 @@ class ReportGenerator:
             border-radius: 8px;
             margin: 15px 0;
             font-weight: bold;
-        }}
-        .stability-grid {{
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin: 5px 0 15px 0;
-        }}
-        .stability-item {{
-            background: #1a1a2e;
-            padding: 10px 15px;
-            border-radius: 6px;
-            border-left: 3px solid #666;
-        }}
-        .stability-item .emoji {{
-            font-size: 1.2em;
-        }}
-        .stability-item .name {{
-            font-weight: bold;
-        }}
-        .stability-item .status {{
-            color: #888;
-            font-size: 0.9em;
-        }}
-        .stability-item .max-hops {{
-            color: #666;
-            font-size: 0.8em;
         }}
     </style>
 </head>
@@ -361,10 +354,12 @@ class ReportGenerator:
         <h2>🖥️ Anslutna skärmar</h2>
         <div class="display-grid">{display_html}</div>
 
+        {notes_html}
+
         <div class="footer">
             Genererad av ProAV Shōko v1.0.0 &bull; {timestamp}
             <br>
-            <span style="color:#444;">hop_limits.csv kan redigeras för att anpassa stabilitetsgränser per plattform</span>
+            <span style="color:#444;">hops-gränser från hop_limits.csv (src/assets/)</span>
         </div>
     </div>
 </body>
@@ -419,12 +414,7 @@ class ReportGenerator:
         return html
 
     def generate_pdf_report(self, html_path: str, custom_path: Optional[str] = None) -> Optional[str]:
-        """
-        Genererar PDF-rapport från HTML.
-
-        Returns:
-            Sökväg till PDF-filen eller None vid fel.
-        """
+        """Genererar PDF-rapport från HTML."""
         if HTML is None:
             print("⚠️  weasyprint inte installerat, hoppar över PDF-generering.")
             return None
@@ -435,7 +425,6 @@ class ReportGenerator:
             else:
                 pdf_filename = Path(html_path).with_suffix('.pdf')
 
-            # Skapa katalogen om den inte finns
             pdf_filename.parent.mkdir(parents=True, exist_ok=True)
 
             HTML(filename=html_path).write_pdf(str(pdf_filename))
@@ -450,11 +439,11 @@ class ReportGenerator:
         try:
             abs_path = os.path.abspath(file_path)
 
-            if sys.platform == 'darwin':  # macOS
+            if sys.platform == 'darwin':
                 subprocess.run(['open', abs_path], check=False)
-            elif sys.platform == 'win32':  # Windows
+            elif sys.platform == 'win32':
                 os.startfile(abs_path)
-            else:  # Linux och övriga
+            else:
                 webbrowser.open(f'file://{abs_path}')
 
             print(f"📂 Öppnade: {abs_path}")
