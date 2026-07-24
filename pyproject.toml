@@ -1,7 +1,7 @@
 [project]
 name = "proav-shoko"
 version = "1.0.0"
-description = "USB-analysverktyg för AV-miljöer - plattformsoberoende"
+description = "USB-analysverktyg för AV-miljöer - plattformsoberoende med GUI"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
