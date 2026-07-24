@@ -13,26 +13,36 @@ class TestUSBAnalyzer(unittest.TestCase):
         """Testa stabilitetsbedömning."""
         analyzer = USBAnalyzer()
 
-        # Testa hops <= 3
+        # Hops <= 3
         hops_data = {'max_hops': 2}
         result = analyzer.assess_stability(hops_data, False)
         self.assertEqual(result['status'], 'STABIL')
+        self.assertEqual(result['color'], 'green')
 
-        # Testa hops = 4
+        # Hops = 4
         hops_data = {'max_hops': 4}
         result = analyzer.assess_stability(hops_data, False)
         self.assertEqual(result['status'], 'OK')
+        self.assertEqual(result['color'], 'yellow')
 
-        # Testa hops = 5 Apple Silicon
+        # Hops = 5 Apple Silicon
         hops_data = {'max_hops': 5}
         result = analyzer.assess_stability(hops_data, True)
         self.assertEqual(result['status'], 'OSÄKER')
+        self.assertEqual(result['color'], 'orange')
         self.assertIsNotNone(result['warning'])
 
-        # Testa hops >= 6
+        # Hops = 5 Intel
+        hops_data = {'max_hops': 5}
+        result = analyzer.assess_stability(hops_data, False)
+        self.assertEqual(result['status'], 'OK')
+        self.assertEqual(result['color'], 'yellow')
+
+        # Hops >= 6
         hops_data = {'max_hops': 6}
         result = analyzer.assess_stability(hops_data, False)
         self.assertEqual(result['status'], 'INSTABIL')
+        self.assertEqual(result['color'], 'red')
 
 
 if __name__ == '__main__':
