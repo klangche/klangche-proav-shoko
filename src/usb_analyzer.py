@@ -4,7 +4,6 @@ USB-analysator - hanterar USB-träd, hops, tiers och stabilitetsbedömning
 
 import sys
 import csv
-import os
 from collections import defaultdict
 from typing import Dict, List, Any, Optional
 from pathlib import Path
@@ -20,45 +19,20 @@ except ImportError:
 class USBAnalyzer:
     """Analyserar USB-enheter och bygger hierarkiskt träd."""
 
-    # Standardgränser för hops per plattform (används endast om CSV saknas)
-    DEFAULT_HOP_LIMITS = {
-        'windows_x86': 4,
-        'windows_arm': 4,
-        'mac_intel': 7,
-        'mac_apple_silicon': 3,
-        'linux_x86': 4,
-        'linux_arm': 4,
-        'iphone_lightning': 2,
-        'iphone_usbc': 3,
-        'samsung_usbc': 4,
-        'android_usbc': 4,
-        'ipad_lightning': 2,
-        'ipad_usbc': 3
-    }
-
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self):
         """Initiera USB-analysatorn."""
         self.monitor = USBMonitor()
         self.devices = {}
         
-        # Sökväg till CSV: först i assets, sedan i current directory
-        if config_path:
-            self.config_path = Path(config_path)
-        else:
-            # Leta i src/assets/ först
-            assets_path = Path(__file__).parent / "assets" / "hop_limits.csv"
-            if assets_path.exists():
-                self.config_path = assets_path
-            else:
-                # Om inte, använd current directory
-                self.config_path = Path("hop_limits.csv")
-        
+        # Ladda hops-gränser från den inbakade CSV-filen i assets
+        self.config_path = Path(__file__).parent / "assets" / "hop_limits.csv"
         self.hop_limits = self._load_hop_limits()
+        self.platform_notes = self._load_platform_notes()
 
     def _load_hop_limits(self) -> Dict[str, int]:
-        """Ladda hops-gränser från CSV eller använd standardvärden."""
-        limits = self.DEFAULT_HOP_LIMITS.copy()
-
+        """Ladda hops-gränser från den inbakade CSV-filen."""
+        limits = {}
+        
         if self.config_path and self.config_path.exists():
             try:
                 with open(self.config_path, 'r', encoding='utf-8') as f:
@@ -71,59 +45,54 @@ class USBAnalyzer:
                 print(f"[+] Laddade hops-gränser från: {self.config_path}")
             except Exception as e:
                 print(f"⚠️  Kunde inte ladda {self.config_path}: {e}")
+                limits = self._get_fallback_limits()
         else:
-            # Skapa standard-CSV i assets-mappen om den inte finns
-            self._create_default_csv()
-            print(f"[+] Skapade standard hop_limits.csv i {self.config_path}")
-
+            print(f"⚠️  {self.config_path} hittades inte, använder fallback-värden")
+            limits = self._get_fallback_limits()
+            
         return limits
 
-    def _create_default_csv(self):
-        """Skapa standard CSV-fil med hops-gränser."""
-        # Skapa assets-mappen om den inte finns
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        content = self.get_hop_limits_csv()
-        with open(self.config_path, 'w', encoding='utf-8') as f:
-            f.write(content)
+    def _get_fallback_limits(self) -> Dict[str, int]:
+        """Fallback-värden om CSV saknas."""
+        return {
+            'windows_x86': 4,
+            'windows_arm': 4,
+            'mac_intel': 7,
+            'mac_apple_silicon': 3,
+            'linux_x86': 4,
+            'linux_arm': 4,
+            'iphone_lightning': 2,
+            'iphone_usbc': 3,
+            'samsung_usbc': 4,
+            'android_usbc': 4,
+            'ipad_lightning': 2,
+            'ipad_usbc': 3
+        }
 
-    def get_hop_limits_csv(self) -> str:
-        """Generera CSV-innehåll för hops-gränser med noteringar."""
-        headers = ['platform', 'max_hops', 'description', 'notes']
-        rows = [
-            ['windows_x86', '4', 'Windows (Intel/AMD)', 'xHCI supports 5 hubs per spec; practical limits often around 4 external hubs'],
-            ['windows_arm', '4', 'Windows (ARM)', 'Follows standard xHCI limits, may have vendor-specific controller limitations'],
-            ['mac_intel', '7', 'Mac (Intel)', 'Intel Macs support deeper chains (7 tiers). Use powered hubs or Thunderbolt docks'],
-            ['mac_apple_silicon', '3', 'Mac (Apple Silicon)', 'Built-in hub per USB-C port consumes 1 tier. Practical limit: built-in + 2 external + device'],
-            ['linux_x86', '4', 'Linux (Intel/AMD)', 'Follows xHCI spec but limited by kernel endpoint allocation'],
-            ['linux_arm', '4', 'Linux (ARM)', 'ARM systems (e.g., Raspberry Pi) may have tighter limits'],
-            ['iphone_lightning', '2', 'iPhone (Lightning)', 'Limited hub support; avoid deep chains. Avoid if possible'],
-            ['iphone_usbc', '3', 'iPhone (USB-C)', 'Less is more unfortunate due to Apple Silicon implementation'],
-            ['samsung_usbc', '4', 'Samsung (USB-C)', 'Practical hub limits vary; specific chipset/vendor firmware may restrict'],
-            ['android_usbc', '4', 'Android (USB-C)', 'Practical hub limits vary; specific chipset/vendor firmware may restrict'],
-            ['ipad_lightning', '2', 'iPad (Lightning)', 'Limited hub support; avoid deep chains. Avoid if possible'],
-            ['ipad_usbc', '3', 'iPad (USB-C)', 'M-series supports limited chains; A-series has tighter limits. Use powered hubs']
-        ]
+    def _load_platform_notes(self) -> List[Dict[str, str]]:
+        """Ladda noteringar från CSV-filen."""
+        notes = []
+        if self.config_path and self.config_path.exists():
+            try:
+                with open(self.config_path, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        platform = row.get('platform', '').strip()
+                        description = row.get('description', '').strip()
+                        note = row.get('notes', '').strip()
+                        if platform and note:
+                            notes.append({
+                                'platform': platform,
+                                'description': description,
+                                'note': note
+                            })
+            except Exception as e:
+                print(f"⚠️  Kunde inte läsa noteringar: {e}")
+        return notes
 
-        output = []
-        output.append(','.join(headers))
-        for row in rows:
-            output.append(','.join(row))
-
-        return '\n'.join(output)
-
-    def save_hop_limits_csv(self, filepath: Optional[str] = None) -> None:
-        """Spara hops-gränser till CSV-fil."""
-        if filepath:
-            path = Path(filepath)
-        else:
-            path = self.config_path
-        
-        path.parent.mkdir(parents=True, exist_ok=True)
-        content = self.get_hop_limits_csv()
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write(content)
-        print(f"[+] Sparade hops-gränser till: {path}")
+    def get_platform_notes(self) -> List[Dict[str, str]]:
+        """Hämta noteringar för rapporter."""
+        return self.platform_notes
 
     def build_tree(self) -> List[Dict[str, Any]]:
         """Bygger ett hierarkiskt träd av USB-enheter."""
@@ -214,7 +183,14 @@ class USBAnalyzer:
         }
 
     def assess_stability(self, hops_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Bedömer stabilitet för ALLA plattformar baserat på hops."""
+        """
+        Bedömer stabilitet för ALLA plattformar baserat på hops.
+        
+        Färglogik:
+        - 🟢 Grön: hops < max_hops (STABIL)
+        - 🟠 Orange: hops == max_hops (PÅ GRÄNSEN / OSÄKER)
+        - 🔴 Röd: hops > max_hops (INSTABIL)
+        """
         max_hops = hops_data.get('max_hops', 0)
 
         # Definiera alla plattformar med deras hops-gränser
@@ -236,24 +212,30 @@ class USBAnalyzer:
             {'id': 'ipad_usbc', 'name': 'iPad USB-C', 'arch': 'Mobile', 'max_hops': self.hop_limits.get('ipad_usbc', 3)}
         ]
 
-        # Bedöm varje plattform
+        # Bedöm varje plattform med ny färglogik
         verdicts = []
         for platform in platforms:
             max_allowed = platform['max_hops']
-            is_stable = max_hops <= max_allowed
-
-            if is_stable:
+            
+            # Färglogik:
+            # - Grön: hops < max_hops
+            # - Orange: hops == max_hops
+            # - Röd: hops > max_hops
+            if max_hops < max_allowed:
                 status = 'STABIL'
                 color = 'green'
                 emoji = '🟢'
-            elif max_hops <= max_allowed + 1:
-                status = 'OSÄKER'
+                warning = None
+            elif max_hops == max_allowed:
+                status = 'PÅ GRÄNSEN'
                 color = 'orange'
                 emoji = '🟠'
-            else:
+                warning = f"Max {max_allowed} hops – på gränsen!"
+            else:  # max_hops > max_allowed
                 status = 'INSTABIL'
                 color = 'red'
                 emoji = '🔴'
+                warning = f"Överskrider max {max_allowed} hops!"
 
             verdict = {
                 'id': platform['id'],
@@ -264,8 +246,8 @@ class USBAnalyzer:
                 'status': status,
                 'color': color,
                 'emoji': emoji,
-                'is_stable': is_stable,
-                'warning': f"Max {max_allowed} hops" if not is_stable else None
+                'is_stable': max_hops <= max_allowed,
+                'warning': warning
             }
             verdicts.append(verdict)
 
@@ -280,7 +262,8 @@ class USBAnalyzer:
             'max_hops': max_hops,
             'verdicts': verdicts,
             'groups': groups,
-            'overall_worst': max([v['status'] for v in verdicts], key=lambda x: {'STABIL': 0, 'OSÄKER': 1, 'INSTABIL': 2}[x])
+            'overall_worst': max([v['status'] for v in verdicts], 
+                                key=lambda x: {'STABIL': 0, 'PÅ GRÄNSEN': 1, 'INSTABIL': 2}[x])
         }
 
     def get_stability_summary(self, stability_data: Dict[str, Any]) -> str:
@@ -296,31 +279,10 @@ class USBAnalyzer:
                 lines.append(f"  {v['emoji']} {v['name']}")
 
         # Lägg till varningar
-        warnings = [v for v in stability_data.get('verdicts', []) if not v['is_stable']]
+        warnings = [v for v in stability_data.get('verdicts', []) if v['warning']]
         if warnings:
             lines.append("\n⚠️  VARNINGAR:")
             for w in warnings:
                 lines.append(f"  • {w['name']}: {w['warning']} (nuvarande hops: {w['current_hops']})")
 
         return '\n'.join(lines)
-
-    def get_platform_notes(self) -> List[Dict[str, str]]:
-        """Hämta noteringar från CSV-filen för alla plattformar."""
-        notes = []
-        if self.config_path and self.config_path.exists():
-            try:
-                with open(self.config_path, 'r', encoding='utf-8') as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
-                        platform = row.get('platform', '').strip()
-                        description = row.get('description', '').strip()
-                        note = row.get('notes', '').strip()
-                        if platform and note:
-                            notes.append({
-                                'platform': platform,
-                                'description': description,
-                                'note': note
-                            })
-            except Exception as e:
-                print(f"⚠️  Kunde inte läsa noteringar: {e}")
-        return notes
