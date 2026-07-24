@@ -36,12 +36,7 @@ class ReportGenerator:
         platform_notes: Optional[List[Dict[str, str]]] = None,
         custom_path: Optional[str] = None
     ) -> str:
-        """
-        Genererar HTML-rapport med mörk bakgrund.
-
-        Returns:
-            Sökväg till HTML-filen.
-        """
+        """Genererar HTML-rapport med mörk bakgrund."""
         html_content = self._build_html_content(
             usb_tree, hops_data, stability, displays, platform_info, platform_notes
         )
@@ -65,7 +60,6 @@ class ReportGenerator:
 
         color_map = {
             'green': '#00cc66',
-            'yellow': '#ffcc00',
             'orange': '#ff8800',
             'red': '#ff3333'
         }
@@ -79,18 +73,24 @@ class ReportGenerator:
                 name = v['name']
                 status = v['status']
                 max_hops = v['max_hops']
+                current_hops = v['current_hops']
                 border_color = color_map.get(color, '#666')
+                
+                # Visa hops-info
+                hops_info = f"{current_hops}/{max_hops}"
+                
                 lines.append(f'''
                     <div style="background:#1a1a2e;padding:10px 15px;border-radius:6px;border-left:3px solid {border_color};">
                         <span style="font-size:1.2em;">{emoji}</span>
                         <span style="font-weight:bold;">{name}</span>
                         <span style="color:#888;font-size:0.9em;">({status})</span>
-                        <span style="color:#666;font-size:0.8em;">max {max_hops} hops</span>
+                        <span style="color:#666;font-size:0.8em;">hops: {hops_info}</span>
                     </div>
                 ''')
             lines.append('</div>')
 
-        warnings = [v for v in stability_data.get('verdicts', []) if not v['is_stable']]
+        # Varningar
+        warnings = [v for v in stability_data.get('verdicts', []) if v['warning']]
         if warnings:
             lines.append('''
                 <div style="background:#ff3333;color:#fff;padding:12px 20px;border-radius:8px;margin:15px 0;">
@@ -141,7 +141,7 @@ class ReportGenerator:
         overall_color = stability.get('overall_worst', 'STABIL')
         color_map = {
             'STABIL': '#00cc66',
-            'OSÄKER': '#ff8800',
+            'PÅ GRÄNSEN': '#ff8800',
             'INSTABIL': '#ff3333'
         }
         summary_color = color_map.get(overall_color, '#00cc66')
@@ -359,7 +359,7 @@ class ReportGenerator:
         <div class="footer">
             Genererad av ProAV Shōko v1.0.0 &bull; {timestamp}
             <br>
-            <span style="color:#444;">hops-gränser från hop_limits.csv (src/assets/)</span>
+            <span style="color:#444;">hop_limits.csv från src/assets/</span>
         </div>
     </div>
 </body>
