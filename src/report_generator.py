@@ -5,6 +5,7 @@ Rapportgenerator - skapar HTML- och PDF-rapporter
 import os
 import webbrowser
 import subprocess
+import sys
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional
@@ -12,8 +13,8 @@ from typing import Dict, List, Any, Optional
 try:
     from weasyprint import HTML
 except ImportError:
-    print("❌ weasyprint är inte installerat. Kör: pip install weasyprint")
-    # Vi tillåter att programmet fortsätter utan PDF-stöd
+    print("⚠️  weasyprint inte installerat. PDF-generering är inaktiverad.")
+    HTML = None
 
 
 class ReportGenerator:
@@ -25,9 +26,15 @@ class ReportGenerator:
         self.output_dir.mkdir(exist_ok=True)
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    def generate_html_report(self, usb_tree: List[Dict], hops_data: Dict[str, Any],
-                             stability: Dict[str, Any], displays: List[Dict[str, Any]],
-                             platform_info: Dict[str, Any]) -> str:
+    def generate_html_report(
+        self,
+        usb_tree: List[Dict],
+        hops_data: Dict[str, Any],
+        stability: Dict[str, Any],
+        displays: List[Dict[str, Any]],
+        platform_info: Dict[str, Any],
+        custom_path: Optional[str] = None
+    ) -> str:
         """
         Genererar HTML-rapport med mörk bakgrund.
 
@@ -38,24 +45,20 @@ class ReportGenerator:
             usb_tree, hops_data, stability, displays, platform_info
         )
 
-        filename = self.output_dir / f"proav-shoko_report_{self.timestamp}.html"
+        if custom_path:
+            filename = Path(custom_path)
+        else:
+            filename = self.output_dir / f"proav-shoko_report_{self.timestamp}.html"
+
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(html_content)
 
         return str(filename)
 
-    def _build_html_content(self, usb_tree: List[Dict], hops_data: Dict[str, Any],
-                            stability: Dict[str, Any], displays: List[Dict[str, Any]],
-                            platform_info: Dict[str, Any]) -> str:
+    def _build_html_content(self, usb_tree, hops_data, stability, displays, platform_info) -> str:
         """Bygger HTML-innehållet."""
-
-        # Generera USB-träd som HTML
         usb_html = self._render_tree(usb_tree)
-
-        # Skärminformation
         display_html = self._render_displays(displays)
-
-        # Tidsstämpel
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         return f"""
@@ -66,12 +69,7 @@ class ReportGenerator:
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ProAV Shōko - USB-analys</title>
     <style>
-        /* === GLOBAL STYLES === */
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
             font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
             background-color: #1a1a2e;
@@ -87,7 +85,6 @@ class ReportGenerator:
             border-radius: 12px;
             box-shadow: 0 8px 32px rgba(0,0,0,0.5);
         }}
-        /* === HEADER === */
         h1 {{
             color: #00d4ff;
             font-size: 2.2em;
@@ -95,12 +92,7 @@ class ReportGenerator:
             padding-bottom: 10px;
             margin-bottom: 20px;
         }}
-        .subtitle {{
-            color: #aaa;
-            font-size: 0.9em;
-            margin-bottom: 30px;
-        }}
-        /* === CARDS === */
+        .subtitle {{ color: #aaa; font-size: 0.9em; margin-bottom: 30px; }}
         .card {{
             background: #1a1a2e;
             border-left: 4px solid #00d4ff;
@@ -112,32 +104,15 @@ class ReportGenerator:
         .card-yellow {{ border-left-color: #ffcc00; }}
         .card-orange {{ border-left-color: #ff8800; }}
         .card-red {{ border-left-color: #ff3333; }}
-        /* === USB TREE === */
         .tree {{
             font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
             font-size: 0.9em;
             padding: 10px 0;
         }}
-        .tree ul {{
-            list-style: none;
-            padding-left: 20px;
-        }}
-        .tree li {{
-            padding: 3px 0;
-            border-left: 2px dotted #444;
-            padding-left: 15px;
-            margin-left: 10px;
-        }}
-        .tree .hub {{
-            color: #ffaa00;
-            font-weight: bold;
-        }}
-        .tree .device {{
-            color: #88ccff;
-        }}
-        .tree .node-label {{
-            display: inline-block;
-        }}
+        .tree ul {{ list-style: none; padding-left: 20px; }}
+        .tree li {{ padding: 3px 0; border-left: 2px dotted #444; padding-left: 15px; margin-left: 10px; }}
+        .tree .hub {{ color: #ffaa00; font-weight: bold; }}
+        .tree .device {{ color: #88ccff; }}
         .hops-badge {{
             background: #333;
             color: #fff;
@@ -146,10 +121,9 @@ class ReportGenerator:
             font-size: 0.8em;
             margin-left: 10px;
         }}
-        /* === STATS === */
         .stats {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
             gap: 15px;
             margin: 20px 0;
         }}
@@ -160,19 +134,11 @@ class ReportGenerator:
             text-align: center;
             border: 1px solid #333;
         }}
-        .stat-value {{
-            font-size: 2em;
-            font-weight: bold;
-            color: #00d4ff;
-        }}
-        .stat-label {{
-            color: #aaa;
-            font-size: 0.8em;
-        }}
-        /* === DISPLAYS === */
+        .stat-value {{ font-size: 2em; font-weight: bold; color: #00d4ff; }}
+        .stat-label {{ color: #aaa; font-size: 0.8em; }}
         .display-grid {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 15px;
             margin: 10px 0;
         }}
@@ -183,12 +149,7 @@ class ReportGenerator:
             border: 1px solid #333;
             text-align: center;
         }}
-        .display-item .resolution {{
-            font-size: 1.4em;
-            color: #00d4ff;
-            font-weight: bold;
-        }}
-        /* === STABILITY BADGE === */
+        .display-item .resolution {{ font-size: 1.4em; color: #00d4ff; font-weight: bold; }}
         .stability-badge {{
             display: inline-block;
             padding: 10px 25px;
@@ -200,7 +161,6 @@ class ReportGenerator:
         .badge-yellow {{ background: #ffcc00; color: #000; }}
         .badge-orange {{ background: #ff8800; color: #000; }}
         .badge-red {{ background: #ff3333; color: #fff; }}
-        /* === WARNING === */
         .warning {{
             background: #ff3333;
             color: #fff;
@@ -209,11 +169,7 @@ class ReportGenerator:
             margin: 15px 0;
             font-weight: bold;
         }}
-        .warning-icon {{
-            font-size: 1.5em;
-            margin-right: 10px;
-        }}
-        /* === FOOTER === */
+        .warning-icon {{ font-size: 1.5em; margin-right: 10px; }}
         .footer {{
             margin-top: 40px;
             padding-top: 20px;
@@ -222,7 +178,6 @@ class ReportGenerator:
             font-size: 0.8em;
             text-align: center;
         }}
-        /* === PLATTFORM === */
         .platform-info {{
             display: flex;
             flex-wrap: wrap;
@@ -238,11 +193,7 @@ class ReportGenerator:
             border-radius: 20px;
             font-size: 0.8em;
         }}
-        .apple-silicon {{
-            background: #ff8800;
-            color: #000;
-            font-weight: bold;
-        }}
+        .apple-silicon {{ background: #ff8800; color: #000; font-weight: bold; }}
     </style>
 </head>
 <body>
@@ -250,14 +201,12 @@ class ReportGenerator:
         <h1>🔍 ProAV Shōko</h1>
         <div class="subtitle">USB-analysrapport • {timestamp}</div>
 
-        <!-- Plattform -->
         <div class="platform-info">
             <span class="platform-tag">🖥️ {platform_info['os']} {platform_info['version']}</span>
             <span class="platform-tag">🧠 {platform_info['architecture']}</span>
             {'''<span class="platform-tag apple-silicon">🍎 Apple Silicon</span>''' if platform_info['is_apple_silicon'] else ''}
         </div>
 
-        <!-- Stabilitet -->
         <div class="card card-{stability['color']}">
             <h3>📊 Stabilitetsbedömning</h3>
             <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
@@ -267,7 +216,6 @@ class ReportGenerator:
             {f'''<div class="warning"><span class="warning-icon">⚠️</span> {stability['warning']}</div>''' if stability['warning'] else ''}
         </div>
 
-        <!-- Statistik -->
         <div class="stats">
             <div class="stat-item">
                 <div class="stat-value">{len(usb_tree)}</div>
@@ -287,22 +235,13 @@ class ReportGenerator:
             </div>
         </div>
 
-        <!-- USB-träd -->
         <h2>🌳 USB-träd</h2>
-        <div class="tree">
-            {usb_html}
-        </div>
+        <div class="tree">{usb_html}</div>
 
-        <!-- Skärmar -->
         <h2 style="margin-top: 40px;">🖥️ Anslutna skärmar</h2>
-        <div class="display-grid">
-            {display_html}
-        </div>
+        <div class="display-grid">{display_html}</div>
 
-        <!-- Footer -->
-        <div class="footer">
-            Genererad av ProAV Shōko v1.0.0 • {timestamp}
-        </div>
+        <div class="footer">Genererad av ProAV Shōko v1.0.0 • {timestamp}</div>
     </div>
 </body>
 </html>
@@ -315,16 +254,12 @@ class ReportGenerator:
 
         html = "<ul>"
         for node in tree:
-            # Bestäm ikon och klass
             is_hub = node.get('is_hub', False)
             icon = "🔌" if is_hub else "🖥️"
             cls = "hub" if is_hub else "device"
-
-            # Hop-räkning från devpath
             devpath = node.get('devpath', '')
             hops = devpath.count('/') if devpath else 0
 
-            # Visa nod
             html += f"""
             <li>
                 <span class="node-label">
@@ -334,7 +269,6 @@ class ReportGenerator:
                 </span>
             """
 
-            # Rekursivt rendera barn
             if node.get('children'):
                 html += self._render_tree(node['children'], level + 1)
 
@@ -360,47 +294,40 @@ class ReportGenerator:
             """
         return html
 
-    def generate_pdf_report(self, html_path: str) -> Optional[str]:
+    def generate_pdf_report(self, html_path: str, custom_path: Optional[str] = None) -> Optional[str]:
         """
         Genererar PDF-rapport från HTML.
 
         Returns:
             Sökväg till PDF-filen eller None vid fel.
         """
-        try:
-            # Kontrollera att weasyprint finns
-            import weasyprint
-
-            pdf_filename = html_path.replace('.html', '.pdf')
-
-            # Konvertera HTML till PDF
-            HTML(filename=html_path).write_pdf(pdf_filename)
-
-            return pdf_filename
-
-        except ImportError:
+        if HTML is None:
             print("⚠️  weasyprint inte installerat, hoppar över PDF-generering.")
             return None
+
+        try:
+            if custom_path:
+                pdf_filename = Path(custom_path)
+            else:
+                pdf_filename = Path(html_path).with_suffix('.pdf')
+
+            HTML(filename=html_path).write_pdf(str(pdf_filename))
+            return str(pdf_filename)
+
         except Exception as e:
             print(f"⚠️  Kunde inte generera PDF: {e}")
             return None
 
     def open_report(self, file_path: str) -> None:
-        """
-        Öppnar rapport i standardprogram.
-
-        Args:
-            file_path: Sökväg till filen.
-        """
+        """Öppnar rapport i standardprogram."""
         try:
-            # Konvertera till absolut sökväg
             abs_path = os.path.abspath(file_path)
 
-            if sys.platform == 'darwin':  # macOS
+            if sys.platform == 'darwin':
                 subprocess.run(['open', abs_path], check=False)
-            elif sys.platform == 'win32':  # Windows
+            elif sys.platform == 'win32':
                 os.startfile(abs_path)
-            else:  # Linux och övriga
+            else:
                 webbrowser.open(f'file://{abs_path}')
 
             print(f"📂 Öppnade: {abs_path}")
