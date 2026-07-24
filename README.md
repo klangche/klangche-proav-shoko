@@ -1,7 +1,7 @@
 # 🔍 ProAV Shōko
 
-**ProAV Shōko** – Din plattformsoberoende USB-detektiv för AV-miljöer.  
-Analysera, verifiera och felsök USB-anslutningar i mötesrum och BYOD-miljöer.
+**ProAV Shōko** – Your platform-independent USB detective for AV environments.
+Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD environments.
 
 [![Build Status](https://github.com/klangche/proav-shoko/actions/workflows/build.yml/badge.svg)](https://github.com/klangche/proav-shoko/actions)
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/klangche/proav-shoko/releases)
@@ -10,79 +10,80 @@ Analysera, verifiera och felsök USB-anslutningar i mötesrum och BYOD-miljöer.
 
 ---
 
-## 📋 Innehållsförteckning
+## 📋 Table of Contents
 
-- [Översikt](#-översikt)
-- [Varför ProAV Shōko?](#-varför-proav-shōko)
-- [Funktioner](#-funktioner)
+- [Overview](#-overview)
+- [Why ProAV Shōko?](#-why-proav-shōko)
+- [Features](#-features)
 - [Installation](#-installation)
-- [Användning](#-användning)
-- [Teknisk stack](#-teknisk-stack)
-- [Bygga från källa](#-bygga-från-källa)
-- [Licens](#-licens)
+- [Usage](#-usage)
+- [Tech Stack](#-tech-stack)
+- [Building From Source](#-building-from-source)
+- [License](#-license)
 
 ---
 
-## 🎯 Översikt
+## 🎯 Overview
 
-ProAV Shōko är ett **plattformsoberoende** analysverktyg som:
+ProAV Shōko is a **platform-independent** analysis tool that:
 
-- 📡 **Skannar** alla anslutna USB-enheter
-- 🌳 **Bygger** ett hierarkiskt träd över USB-kedjan
-- 📊 **Beräknar** hops (antal nivåer) och tiers (djup)
-- 🟢🟡🔴 **Bedömer** stabilitet baserat på kedjans längd
-- 🖥️ **Visar** anslutna skärmar med upplösning
-- 📄 **Genererar** professionella HTML- och PDF-rapporter
+- 📡 **Scans** all connected USB devices
+- 🌳 **Builds** a hierarchical tree of the USB chain
+- 📊 **Calculates** hops (number of levels) and tiers (depth)
+- 🟢🟡🔴 **Assesses** stability based on the chain length
+- 🖥️ **Shows** connected displays with resolution
+- 📄 **Generates** professional HTML and PDF reports
 
-> **Perfekt för:** AV-tekniker, IT-support, säljare och diagnostikteam som behöver snabbt identifiera USB-problem i konferensrum.
-
----
-
-## 🤔 Varför ProAV Shōko?
-
-I moderna mötesrum ser vi ofta:
-
-- USB-C-dockor (Unisynk, HP, Lenovo, CalDigit, Logitech, TiGHT, Hyper, Targus...)
-- Flera hubbar i kedja
-- Webbkameror, högtalartelefoner, pekpaneler, trådlösa presentationsdonglar, externa diskar
-- Användarens egna iPads/iPhones/Android-enheter
-
-**Problemet:** Långa kedjor orsakar ofta problem **endast på Apple Silicon Macs** (M1/M2/M3/M4), medan Windows och Intel Macs vanligtvis fungerar felfritt.
-
-**ProAV Shōko** hjälper tekniker att bevisa:  
-→ *"Kedjan har 5 hops → Windows & Intel OK, men Apple Silicon är inte stabilt"*
+> **Perfect for:** AV technicians, IT support, sales, and diagnostics teams who need to quickly identify USB issues in conference rooms.
 
 ---
 
-## ✨ Funktioner
+## 🤔 Why ProAV Shōko?
 
-| Funktion | Beskrivning | Status |
-|----------|-------------|--------|
-| 🌳 **USB-träd** | Hierarkisk vy över alla anslutna enheter | ✅ |
-| 📏 **Hops & Tiers** | Beräkna antal nivåer och maximalt djup | ✅ |
-| 🟢🟡🔴 **Stabilitetsbedömning** | Färgkodad baserad på kedjans längd | ✅ |
-| 🍎 **Apple Silicon-varning** | Speciell varning vid 5+ hops | ✅ |
-| 🖥️ **Skärminformation** | Visa anslutna skärmar med upplösning | ✅ |
-| 📄 **HTML-rapport** | Mörk bakgrund, identisk med terminalen | ✅ |
-| 📄 **PDF-rapport** | Lång, kontinuerlig sida för utskrift | ✅ |
-| 🖥️ **GUI** | Live-överblick med träd och logg | ✅ |
+In modern meeting rooms we often see:
+
+- USB-C docks (Unisynk, HP, Lenovo, CalDigit, Logitech, TiGHT, Hyper, Targus...)
+- Multiple hubs chained together
+- Webcams, speakerphones, touch panels, wireless presentation dongles, external drives
+- Users' own iPads/iPhones/Android devices
+
+**The problem:** Long chains often cause issues **only on Apple Silicon Macs** (M1/M2/M3/M4), while Windows and Intel Macs typically work flawlessly.
+
+**ProAV Shōko** helps technicians prove:
+→ *"The chain has 5 hops → Windows & Intel OK, but Apple Silicon is not stable"*
+
+---
+
+## ✨ Features
+
+| Feature | Description | Status |
+|---------|-------------|--------|
+| 🌳 **USB Tree** | Hierarchical view of all connected devices | ✅ |
+| 📏 **Hops & Tiers** | Calculates the number of levels and maximum depth | ✅ |
+| 🟢🟡🔴 **Stability Assessment** | Color-coded based on chain length | ✅ |
+| 🍎 **Apple Silicon Warning** | Special warning at 5+ hops | ✅ |
+| 🖥️ **Display Information** | Shows connected displays with resolution | ✅ |
+| 📄 **HTML Report** | Dark background, identical to the terminal | ✅ |
+| 📄 **PDF Report** | Long, continuous page for printing | ✅ |
+| 🖥️ **GUI** | Live overview with tree and log | ✅ |
 
 ---
 
 ## 🚀 Installation
 
-### 📦 För användare (körbar fil)
+### 📦 For Users (executable file)
 
-Ladda ner den senaste versionen för ditt operativsystem från [Releases](https://github.com/klangche/proav-shoko/releases):
+Download the latest version for your operating system from [Releases](https://github.com/klangche/proav-shoko/releases):
 
-| Plattform | Fil | Storlek |
-|-----------|-----|---------|
+| Platform | File | Size |
+|----------|------|------|
 | 🪟 **Windows** | `proav-shoko-windows.exe` | ~15 MB |
 | 🍎 **macOS (Intel)** | `proav-shoko-macos-intel` | ~18 MB |
 | 🍎 **macOS (Apple Silicon)** | `proav-shoko-macos-arm64` | ~18 MB |
 | 🐧 **Linux** | `proav-shoko-linux` | ~15 MB |
 
 ```bash
-# Exempel: Kör direkt på macOS
+# Example: run directly on macOS
 chmod +x proav-shoko-macos-arm64
 ./proav-shoko-macos-arm64
+```
