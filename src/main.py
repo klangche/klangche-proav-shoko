@@ -1,86 +1,38 @@
 #!/usr/bin/env python3
 """
-ProAV Shōko - Huvudprogram för USB-analys
+ProAV Shōko - Huvudprogram
+Väljer mellan GUI och CLI baserat på argument
 """
 
 import sys
-import os
-from pathlib import Path
-
-# Lägg till src i sökvägen för att möjliggöra relativa importer
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from src.usb_analyzer import USBAnalyzer
-from src.display_analyzer import DisplayAnalyzer
-from src.report_generator import ReportGenerator
-from src.platform_utils import PlatformUtils
+import argparse
 
 
 def main():
-    """Huvudfunktion för programmet."""
-    print("\n" + "="*60)
-    print("  🔍 Kangche ProAV Shōko - USB-analysverktyg")
-    print("="*60 + "\n")
-
-    # 1. Plattformsinformation
-    platform_info = PlatformUtils.get_platform_info()
-    print(f"🖥️  Plattform: {platform_info['os']} {platform_info['version']}")
-    print(f"🧠  Arkitektur: {platform_info['architecture']}")
-    if platform_info['is_apple_silicon']:
-        print("⚠️  Apple Silicon (M-chip) detekterad!")
-    print("-"*60)
-
-    # 2. Analysera USB-enheter
-    print("\n📡 Analyserar USB-enheter...")
-    usb_analyzer = USBAnalyzer()
-    usb_tree = usb_analyzer.build_tree()
-    hops_data = usb_analyzer.calculate_hops_and_tiers(usb_tree)
-    stability = usb_analyzer.assess_stability(hops_data, platform_info['is_apple_silicon'])
-
-    # 3. Analysera skärmar
-    print("\n🖥️  Analyserar anslutna skärmar...")
-    display_analyzer = DisplayAnalyzer()
-    displays = display_analyzer.get_display_info()
-
-    # 4. Generera rapporter
-    print("\n📄 Genererar rapporter...")
-    report_gen = ReportGenerator()
-
-    # HTML-rapport
-    html_path = report_gen.generate_html_report(
-        usb_tree,
-        hops_data,
-        stability,
-        displays,
-        platform_info
+    """Huvudfunktion - startar GUI eller CLI."""
+    parser = argparse.ArgumentParser(
+        description='ProAV Shōko - USB-analysverktyg för AV-miljöer'
     )
-    print(f"✅ HTML-rapport skapad: {html_path}")
+    parser.add_argument(
+        '--cli',
+        action='store_true',
+        help='Kör i CLI-läge (utan GUI)'
+    )
+    args = parser.parse_args()
 
-    # PDF-rapport
-    pdf_path = report_gen.generate_pdf_report(html_path)
-    if pdf_path:
-        print(f"✅ PDF-rapport skapad: {pdf_path}")
-
-    # 5. Öppna rapporter
-    print("\n📂 Öppnar rapporter...")
-    report_gen.open_report(html_path)
-    if pdf_path:
-        report_gen.open_report(pdf_path)
-
-    # 6. Sammanfattning i terminalen
-    print("\n" + "="*60)
-    print("📊 SAMMANFATTNING")
-    print("="*60)
-    print(f"📌 USB-enheter: {len(usb_tree)}")
-    print(f"📌 Hops (max): {hops_data['max_hops']}")
-    print(f"📌 Tiers (max): {hops_data['max_tiers']}")
-    print(f"📌 Stabilitetsbedömning: {stability['label']} ({stability['color']})")
-    if stability['warning']:
-        print(f"⚠️  {stability['warning']}")
-    print(f"🖥️  Anslutna skärmar: {len(displays)}")
-    print("="*60 + "\n")
-
-    print("✅ Klart! Rapporterna har öppnats i din webbläsare/PDF-visare.")
+    if args.cli:
+        # CLI-läge
+        from src.main_cli import main as cli_main
+        cli_main()
+    else:
+        # GUI-läge (standard)
+        try:
+            from src.gui import main as gui_main
+            gui_main()
+        except ImportError as e:
+            print(f"❌ Kunde inte starta GUI: {e}")
+            print("   Försök med --cli för att köra i terminalen.")
+            sys.exit(1)
 
 
 if __name__ == "__main__":
