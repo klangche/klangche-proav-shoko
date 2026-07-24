@@ -1,0 +1,26 @@
+[project]
+name = "proav-shoko"
+version = "1.0.0"
+description = "USB-analysverktyg för AV-miljöer - plattformsoberoende"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "usbmonitor>=1.0.0",
+    "screeninfo>=0.8.0",
+    "weasyprint>=60.0"
+]
+
+[project.scripts]
+proav-shoko = "src.main:main"
+
+[tool.uvbox.package]
+name = "proav-shoko"
+script = "proav-shoko"
+
+[tool.uvbox.package.version]
+static = "1.0.0"
+auto-update = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
