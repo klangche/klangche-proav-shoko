@@ -38,4 +38,6 @@ class DisplayAnalyzer:
                 }
                 displays.append(display_info)
         except Exception as e:
-            print(f"⚠️  Kunde inte läsa skärmin
+            print(f"⚠️  Kunde inte läsa skärminformation: {e}")
+
+        return displays
