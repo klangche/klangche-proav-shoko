@@ -1,5 +1,5 @@
 """
-ProAV Shōko - USB-analysverktyg för AV-miljöer
+ProAV Shoko - USB analysis tool for AV environments
 """
 
 __version__ = "1.0.0"

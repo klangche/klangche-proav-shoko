@@ -1,5 +1,5 @@
 """
-GUI för ProAV Shōko - live-överblick med träd och logg
+GUI for ProAV Shoko - live overview with tree and log
 """
 
 import tkinter as tk
@@ -18,7 +18,7 @@ from src.platform_utils import PlatformUtils
 
 
 class LogRedirector:
-    """Omdirigerar stdout/stderr till GUI-logg."""
+    """Redirects stdout/stderr to the GUI log."""
 
     def __init__(self, text_widget, queue):
         self.text_widget = text_widget
@@ -26,7 +26,7 @@ class LogRedirector:
         self.original_stdout = sys.stdout
 
     def write(self, text):
-        """Skriv till både original stdout och GUI."""
+        """Write to both the original stdout and the GUI."""
         self.original_stdout.write(text)
         self.queue.put(text)
 
@@ -35,15 +35,15 @@ class LogRedirector:
 
 
 class ProAVShokoGUI:
-    """Huvud-GUI för ProAV Shōko."""
+    """Main GUI for ProAV Shoko."""
 
     def __init__(self, root):
         self.root = root
-        self.root.title("🔍 ProAV Shōko - USB-detektiv")
+        self.root.title("ProAV Shoko - USB Detective")
         self.root.geometry("1400x800")
         self.root.minsize(1200, 600)
 
-        # Variabler
+        # Variables
         self.is_running = False
         self.log_queue = queue.Queue()
         self.usb_analyzer = None
@@ -52,7 +52,7 @@ class ProAVShokoGUI:
         self.current_data = None
         self.platform_info = None
 
-        # Färger
+        # Colors
         self.colors = {
             'bg': '#1a1a2e',
             'bg_light': '#16213e',
@@ -65,7 +65,7 @@ class ProAVShokoGUI:
             'blue': '#00d4ff'
         }
 
-        # Sätt tema
+        # Set theme
         self.root.configure(bg=self.colors['bg'])
         style = ttk.Style()
         style.theme_use('clam')
@@ -73,38 +73,38 @@ class ProAVShokoGUI:
         style.configure('TLabelframe', background=self.colors['bg'], foreground=self.colors['fg'])
         style.configure('TLabelframe.Label', background=self.colors['bg'], foreground=self.colors['fg'])
 
-        # Bygg GUI
+        # Build GUI
         self._build_gui()
 
-        # Starta logg-uppdatering
+        # Start log updates
         self._update_log()
 
-        # Börja analys direkt
+        # Start analysis immediately
         self.root.after(500, self._start_analysis)
 
     def _build_gui(self):
-        """Bygg gränssnittet."""
-        # Huvudram
+        """Build the interface."""
+        # Main frame
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # === TOPP: Reset-knapp ===
+        # === TOP: Reset button ===
         top_frame = ttk.Frame(main_frame)
         top_frame.pack(fill=tk.X, pady=(0, 10))
 
-        # Plattformsinfo
+        # Platform info
         self.platform_label = ttk.Label(
             top_frame,
-            text="🖥️ Laddar plattformsinfo...",
+            text="Loading platform info...",
             font=('Segoe UI', 10),
             foreground=self.colors['blue']
         )
         self.platform_label.pack(side=tk.LEFT)
 
-        # Reset-knapp
+        # Reset button
         reset_btn = tk.Button(
             top_frame,
-            text="🔄 Reset",
+            text="Reset",
             font=('Segoe UI', 10, 'bold'),
             bg=self.colors['blue'],
             fg='white',
@@ -115,12 +115,12 @@ class ProAVShokoGUI:
         )
         reset_btn.pack(side=tk.RIGHT)
 
-        # === MITTEN: Träd (vänster) + Logg (höger) ===
+        # === MIDDLE: Tree (left) + Log (right) ===
         middle_frame = ttk.Frame(main_frame)
         middle_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Vänster: USB-träd med stabilitet
-        left_frame = ttk.LabelFrame(middle_frame, text="🌳 USB-träd & Stabilitet", padding=10)
+        # Left: USB tree with stability
+        left_frame = ttk.LabelFrame(middle_frame, text="USB Tree & Stability", padding=10)
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
 
         self.tree_text = tk.Text(
@@ -135,15 +135,15 @@ class ProAVShokoGUI:
         )
         self.tree_text.pack(fill=tk.BOTH, expand=True)
 
-        # Scrollbars för träd
+        # Scrollbars for the tree
         tree_scroll_y = ttk.Scrollbar(left_frame, orient=tk.VERTICAL, command=self.tree_text.yview)
         tree_scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
         tree_scroll_x = ttk.Scrollbar(left_frame, orient=tk.HORIZONTAL, command=self.tree_text.xview)
         tree_scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
         self.tree_text.configure(yscrollcommand=tree_scroll_y.set, xscrollcommand=tree_scroll_x.set)
 
-        # Höger: Live-logg
-        right_frame = ttk.LabelFrame(middle_frame, text="📋 Live-logg", padding=10)
+        # Right: Live log
+        right_frame = ttk.LabelFrame(middle_frame, text="Live Log", padding=10)
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
 
         self.log_text = tk.Text(
@@ -162,27 +162,27 @@ class ProAVShokoGUI:
         log_scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
         self.log_text.configure(yscrollcommand=log_scroll_y.set)
 
-        # === BOTTEN: Knappar för rapporter ===
+        # === BOTTOM: Report buttons ===
         bottom_frame = ttk.Frame(main_frame)
         bottom_frame.pack(fill=tk.X, pady=(10, 0))
 
         # Status
         self.status_label = ttk.Label(
             bottom_frame,
-            text="✅ Redo",
+            text="Ready",
             font=('Segoe UI', 9),
             foreground=self.colors['green']
         )
         self.status_label.pack(side=tk.LEFT)
 
-        # Knappar
+        # Buttons
         btn_frame = ttk.Frame(bottom_frame)
         btn_frame.pack(side=tk.RIGHT)
 
-        # Exportera CSV-knapp
+        # Export CSV button
         csv_btn = tk.Button(
             btn_frame,
-            text="📊 Export CSV Limits",
+            text="Export CSV Limits",
             font=('Segoe UI', 9, 'bold'),
             bg='#2d2d44',
             fg='white',
@@ -195,7 +195,7 @@ class ProAVShokoGUI:
 
         html_btn = tk.Button(
             btn_frame,
-            text="📄 Print HTML Report",
+            text="Print HTML Report",
             font=('Segoe UI', 10, 'bold'),
             bg='#2d2d44',
             fg='white',
@@ -208,7 +208,7 @@ class ProAVShokoGUI:
 
         pdf_btn = tk.Button(
             btn_frame,
-            text="📄 Print PDF Report",
+            text="Print PDF Report",
             font=('Segoe UI', 10, 'bold'),
             bg='#2d2d44',
             fg='white',
@@ -220,62 +220,62 @@ class ProAVShokoGUI:
         pdf_btn.pack(side=tk.LEFT)
 
     def _start_analysis(self):
-        """Starta analys i bakgrundstråd."""
+        """Start the analysis in a background thread."""
         if self.is_running:
             return
 
         self.is_running = True
-        self.status_label.config(text="⏳ Analyserar...", foreground=self.colors['yellow'])
+        self.status_label.config(text="Analyzing...", foreground=self.colors['yellow'])
         self.log_text.delete(1.0, tk.END)
         self.tree_text.delete(1.0, tk.END)
 
-        # Omdirigera stdout till logg
+        # Redirect stdout to the log
         sys.stdout = LogRedirector(self.log_text, self.log_queue)
 
-        # Starta tråd
+        # Start thread
         thread = threading.Thread(target=self._run_analysis, daemon=True)
         thread.start()
 
     def _run_analysis(self):
-        """Kör analys i bakgrunden."""
+        """Run the analysis in the background."""
         try:
-            # 1. Plattform
+            # 1. Platform
             self.platform_info = PlatformUtils.get_platform_info()
             print("=" * 60)
-            print("  🔍 KANGCHE PROAV SHOKO - USB DETECTIVE")
+            print("  KLANGCHE PROAV SHOKO - USB DETECTIVE")
             print("=" * 60)
             print(f"\n[+] Platform: {self.platform_info['os']} {self.platform_info['version']}")
             print(f"[+] Architecture: {self.platform_info['architecture']}")
             if self.platform_info['is_apple_silicon']:
                 print("[+] Apple Silicon detected!")
 
-            # Uppdatera plattformsetikett i GUI-tråden
+            # Update the platform label in the GUI thread
             self.root.after(0, self._update_platform_label)
 
-            # 2. USB-analys - ladda hops-gränser från CSV om den finns
+            # 2. USB analysis - load hop limits from CSV if it exists
             config_path = Path("hop_limits.csv")
             if config_path.exists():
                 self.usb_analyzer = USBAnalyzer(str(config_path))
-                print(f"[+] Laddade hops-gränser från: {config_path}")
+                print(f"[+] Loaded hop limits from: {config_path}")
             else:
                 self.usb_analyzer = USBAnalyzer()
-                # Spara standard CSV
+                # Save default CSV
                 self.usb_analyzer.save_hop_limits_csv("hop_limits.csv")
-                print(f"[+] Skapade standard hop_limits.csv")
+                print(f"[+] Created default hop_limits.csv")
 
             print("\n[+] Scanning USB devices...")
             usb_tree = self.usb_analyzer.build_tree()
             hops_data = self.usb_analyzer.calculate_hops_and_tiers(usb_tree)
 
-            # 3. Stabilitetsbedömning för alla plattformar
+            # 3. Stability assessment for all platforms
             stability = self.usb_analyzer.assess_stability(hops_data)
 
-            # 4. Skärminformation
+            # 4. Display information
             print("\n[+] Scanning displays...")
             self.display_analyzer = DisplayAnalyzer()
             displays = self.display_analyzer.get_display_info()
 
-            # Spara data
+            # Save data
             self.current_data = {
                 'usb_tree': usb_tree,
                 'hops_data': hops_data,
@@ -284,22 +284,22 @@ class ProAVShokoGUI:
                 'platform_info': self.platform_info
             }
 
-            # 5. Uppdatera träd i GUI
+            # 5. Update the tree in the GUI
             self.root.after(0, self._update_tree_display, usb_tree, hops_data, stability, displays)
 
-            # 6. Skriv ut stabilitetssammanfattning i loggen
+            # 6. Print the stability summary to the log
             print(self.usb_analyzer.get_stability_summary(stability))
 
             print("\n[+] Analysis complete!")
             self.root.after(0, lambda: self.status_label.config(
-                text="✅ Analys klar",
+                text="Analysis complete",
                 foreground=self.colors['green']
             ))
 
         except Exception as e:
-            print(f"\n❌ Error: {e}")
+            print(f"\n[!] Error: {e}")
             self.root.after(0, lambda: self.status_label.config(
-                text=f"❌ Fel: {e}",
+                text=f"Error: {e}",
                 foreground=self.colors['red']
             ))
         finally:
@@ -308,23 +308,23 @@ class ProAVShokoGUI:
                 sys.stdout = sys.stdout.original_stdout
 
     def _update_platform_label(self):
-        """Uppdatera plattformsetiketten."""
+        """Update the platform label."""
         if self.platform_info:
-            text = f"🖥️ {self.platform_info['os']} {self.platform_info['architecture']}"
+            text = f"{self.platform_info['os']} {self.platform_info['architecture']}"
             if self.platform_info['is_apple_silicon']:
-                text += " ⚠️ Apple Silicon"
+                text += " (Apple Silicon)"
             self.platform_label.config(text=text)
 
     def _update_tree_display(self, usb_tree, hops_data, stability, displays):
-        """Uppdatera trädvisningen."""
+        """Update the tree display."""
         self.tree_text.delete(1.0, tk.END)
 
-        # Stabilitetsrubrik
+        # Stability heading
         self.tree_text.insert(tk.END, "\n")
-        self.tree_text.insert(tk.END, "📊 STABILITY VERDICT\n", ('header',))
+        self.tree_text.insert(tk.END, "STABILITY VERDICT\n", ('header',))
         self.tree_text.insert(tk.END, "-" * 50 + "\n", ('header',))
 
-        # Visa alla plattformar grupperade
+        # Show all platforms grouped
         groups = stability.get('groups', {})
         for arch, verdicts in groups.items():
             self.tree_text.insert(tk.END, f"\n{arch}\n", ('arch_header',))
@@ -338,42 +338,42 @@ class ProAVShokoGUI:
                 self.tree_text.insert(tk.END, f"({status})  ", ('info',))
                 self.tree_text.insert(tk.END, f"max {v['max_hops']} hops\n", ('dim',))
 
-        # Varningar
+        # Warnings
         warnings = [v for v in stability.get('verdicts', []) if not v['is_stable']]
         if warnings:
-            self.tree_text.insert(tk.END, "\n⚠️  VARNINGAR:\n", ('warning_header',))
+            self.tree_text.insert(tk.END, "\nWARNINGS:\n", ('warning_header',))
             for w in warnings:
                 self.tree_text.insert(
                     tk.END,
-                    f"  • {w['name']}: {w['warning']} (nuvarande hops: {w['current_hops']})\n",
+                    f"  - {w['name']}: {w['warning']} (current hops: {w['current_hops']})\n",
                     ('warning',)
                 )
 
-        # USB-träd
-        self.tree_text.insert(tk.END, "\n\n🌳 USB TREE STRUCTURE\n", ('header',))
+        # USB tree
+        self.tree_text.insert(tk.END, "\n\nUSB TREE STRUCTURE\n", ('header',))
         self.tree_text.insert(tk.END, "-" * 50 + "\n", ('header',))
 
         if usb_tree:
             self._render_tree_to_text(usb_tree, 0)
         else:
-            self.tree_text.insert(tk.END, "  Inga USB-enheter hittades.\n", ('info',))
+            self.tree_text.insert(tk.END, "  No USB devices found.\n", ('info',))
 
-        # Skärmar
-        self.tree_text.insert(tk.END, "\n🖥️ DISPLAY INFORMATION\n", ('header',))
+        # Displays
+        self.tree_text.insert(tk.END, "\nDISPLAY INFORMATION\n", ('header',))
         self.tree_text.insert(tk.END, "-" * 50 + "\n", ('header',))
 
         if displays:
             for display in displays:
-                primary = " ⭐" if display.get('is_primary', False) else ""
+                primary = " (Primary)" if display.get('is_primary', False) else ""
                 self.tree_text.insert(
                     tk.END,
                     f"  {display['resolution']}  {display['name']}{primary}\n",
                     ('info',)
                 )
         else:
-            self.tree_text.insert(tk.END, "  Inga skärmar hittades.\n", ('info',))
+            self.tree_text.insert(tk.END, "  No displays found.\n", ('info',))
 
-        # Konfigurera taggar för färger
+        # Configure tags for colors
         self.tree_text.tag_configure('header', font=('Courier New', 11, 'bold'), foreground=self.colors['blue'])
         self.tree_text.tag_configure('arch_header', font=('Courier New', 10, 'bold'), foreground=self.colors['blue'])
         self.tree_text.tag_configure('warning_header', font=('Courier New', 10, 'bold'), foreground=self.colors['orange'])
@@ -385,26 +385,25 @@ class ProAVShokoGUI:
         self.tree_text.tag_configure('stability_orange', foreground=self.colors['orange'])
         self.tree_text.tag_configure('stability_red', foreground=self.colors['red'])
 
-        # Flytta till toppen
+        # Scroll to top
         self.tree_text.see(1.0)
 
     def _render_tree_to_text(self, tree, level):
-        """Rekursivt rendera USB-träd till textwidget."""
+        """Recursively render the USB tree into the text widget."""
         indent = "  " * level
         for node in tree:
             is_hub = node.get('is_hub', False)
-            icon = "📌" if is_hub else "🖥️"
             hub_tag = " [HUB]" if is_hub else ""
             hops = node['devpath'].count('/') if node.get('devpath') else 0
 
-            line = f"{indent}{icon} {node.get('model', 'Okänd')}{hub_tag}  hops: {hops}\n"
+            line = f"{indent}{node.get('model', 'Unknown')}{hub_tag}  hops: {hops}\n"
             self.tree_text.insert(tk.END, line, ('info',))
 
             if node.get('children'):
                 self._render_tree_to_text(node['children'], level + 1)
 
     def _update_log(self):
-        """Uppdatera loggwidget från kö."""
+        """Update the log widget from the queue."""
         try:
             while True:
                 text = self.log_queue.get_nowait()
@@ -416,14 +415,14 @@ class ProAVShokoGUI:
             self.root.after(100, self._update_log)
 
     def _reset_analysis(self):
-        """Återställ och starta om analys."""
-        if messagebox.askyesno("Återställ", "Vill du återställa och starta om analysen?"):
+        """Reset and restart the analysis."""
+        if messagebox.askyesno("Reset", "Do you want to reset and restart the analysis?"):
             self._start_analysis()
 
     def _export_csv_limits(self):
-        """Exportera hops-gränser som CSV."""
+        """Export hop limits as CSV."""
         if not self.usb_analyzer:
-            messagebox.showwarning("Ingen analys", "Kör först en analys!")
+            messagebox.showwarning("No analysis", "Run an analysis first!")
             return
 
         default_name = f"hop_limits_{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.csv"
@@ -431,7 +430,7 @@ class ProAVShokoGUI:
             defaultextension=".csv",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
             initialfile=default_name,
-            title="Spara hops-gränser som CSV"
+            title="Save hop limits as CSV"
         )
 
         if not file_path:
@@ -439,14 +438,14 @@ class ProAVShokoGUI:
 
         try:
             self.usb_analyzer.save_hop_limits_csv(file_path)
-            messagebox.showinfo("Klart", f"CSV-fil sparad:\n{file_path}")
+            messagebox.showinfo("Done", f"CSV file saved:\n{file_path}")
         except Exception as e:
-            messagebox.showerror("Fel", f"Kunde inte spara CSV: {e}")
+            messagebox.showerror("Error", f"Could not save CSV: {e}")
 
     def _print_html_report(self):
-        """Generera och spara HTML-rapport."""
+        """Generate and save the HTML report."""
         if not self.current_data:
-            messagebox.showwarning("Ingen data", "Kör först en analys!")
+            messagebox.showwarning("No data", "Run an analysis first!")
             return
 
         default_name = f"proav-shoko-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.html"
@@ -454,14 +453,14 @@ class ProAVShokoGUI:
             defaultextension=".html",
             filetypes=[("HTML files", "*.html"), ("All files", "*.*")],
             initialfile=default_name,
-            title="Spara HTML-rapport"
+            title="Save HTML report"
         )
 
         if not file_path:
             return
 
         try:
-            self.status_label.config(text="⏳ Genererar HTML...", foreground=self.colors['yellow'])
+            self.status_label.config(text="Generating HTML...", foreground=self.colors['yellow'])
             self.report_generator = ReportGenerator()
             html_path = self.report_generator.generate_html_report(
                 self.current_data['usb_tree'],
@@ -469,19 +468,20 @@ class ProAVShokoGUI:
                 self.current_data['stability'],
                 self.current_data['displays'],
                 self.current_data['platform_info'],
+                platform_notes=self.usb_analyzer.get_platform_notes() if self.usb_analyzer else None,
                 custom_path=file_path
             )
-            self.status_label.config(text=f"✅ HTML sparad", foreground=self.colors['green'])
+            self.status_label.config(text="HTML saved", foreground=self.colors['green'])
             print(f"\n[+] HTML Report saved: {html_path}")
-            messagebox.showinfo("Klart", f"HTML-rapport sparad:\n{html_path}")
+            messagebox.showinfo("Done", f"HTML report saved:\n{html_path}")
         except Exception as e:
-            messagebox.showerror("Fel", f"Kunde inte generera HTML-rapport: {e}")
-            self.status_label.config(text=f"❌ Fel: {e}", foreground=self.colors['red'])
+            messagebox.showerror("Error", f"Could not generate HTML report: {e}")
+            self.status_label.config(text=f"Error: {e}", foreground=self.colors['red'])
 
     def _print_pdf_report(self):
-        """Generera och spara PDF-rapport."""
+        """Generate and save the PDF report."""
         if not self.current_data:
-            messagebox.showwarning("Ingen data", "Kör först en analys!")
+            messagebox.showwarning("No data", "Run an analysis first!")
             return
 
         default_name = f"proav-shoko-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.pdf"
@@ -489,14 +489,14 @@ class ProAVShokoGUI:
             defaultextension=".pdf",
             filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
             initialfile=default_name,
-            title="Spara PDF-rapport"
+            title="Save PDF report"
         )
 
         if not file_path:
             return
 
         try:
-            self.status_label.config(text="⏳ Genererar PDF...", foreground=self.colors['yellow'])
+            self.status_label.config(text="Generating PDF...", foreground=self.colors['yellow'])
 
             import tempfile
             with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as tmp:
@@ -509,6 +509,7 @@ class ProAVShokoGUI:
                 self.current_data['stability'],
                 self.current_data['displays'],
                 self.current_data['platform_info'],
+                platform_notes=self.usb_analyzer.get_platform_notes() if self.usb_analyzer else None,
                 custom_path=tmp_path
             )
 
@@ -520,18 +521,18 @@ class ProAVShokoGUI:
                 pass
 
             if pdf_path:
-                self.status_label.config(text=f"✅ PDF sparad", foreground=self.colors['green'])
+                self.status_label.config(text="PDF saved", foreground=self.colors['green'])
                 print(f"\n[+] PDF Report saved: {pdf_path}")
-                messagebox.showinfo("Klart", f"PDF-rapport sparad:\n{pdf_path}")
+                messagebox.showinfo("Done", f"PDF report saved:\n{pdf_path}")
             else:
-                messagebox.showwarning("Varning", "PDF-generering misslyckades. Kontrollera att weasyprint är installerat.")
+                messagebox.showwarning("Warning", "PDF generation failed. Check that weasyprint is installed.")
         except Exception as e:
-            messagebox.showerror("Fel", f"Kunde inte generera PDF-rapport: {e}")
-            self.status_label.config(text=f"❌ Fel: {e}", foreground=self.colors['red'])
+            messagebox.showerror("Error", f"Could not generate PDF report: {e}")
+            self.status_label.config(text=f"Error: {e}", foreground=self.colors['red'])
 
 
 def main():
-    """Starta GUI-applikationen."""
+    """Start the GUI application."""
     root = tk.Tk()
     app = ProAVShokoGUI(root)
     root.mainloop()

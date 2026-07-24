@@ -1,5 +1,5 @@
 """
-Plattformsspecifika funktioner
+Platform-specific utility functions
 """
 
 import sys
@@ -9,15 +9,15 @@ from typing import Dict, Any
 
 
 class PlatformUtils:
-    """Verktyg för plattformsinformation."""
+    """Utilities for platform information."""
 
     @staticmethod
     def get_platform_info() -> Dict[str, Any]:
         """
-        Samlar in plattformsinformation.
+        Collects platform information.
 
         Returns:
-            Dictionary med plattformsinformation.
+            Dictionary with platform information.
         """
         system = platform.system()
         version = platform.version()
@@ -37,7 +37,7 @@ class PlatformUtils:
 
     @staticmethod
     def is_admin() -> bool:
-        """Kontrollera om programmet körs med administratörsrättigheter."""
+        """Check whether the program is running with administrator/root privileges."""
         try:
             if sys.platform == 'win32':
                 import ctypes
