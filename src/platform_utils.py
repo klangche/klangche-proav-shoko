@@ -3,6 +3,7 @@ Plattformsspecifika funktioner
 """
 
 import sys
+import os
 import platform
 from typing import Dict, Any
 
@@ -22,7 +23,6 @@ class PlatformUtils:
         version = platform.version()
         arch = platform.machine()
 
-        # Kontrollera Apple Silicon
         is_apple_silicon = False
         if system == 'Darwin' and arch == 'arm64':
             is_apple_silicon = True
@@ -43,7 +43,6 @@ class PlatformUtils:
                 import ctypes
                 return ctypes.windll.shell32.IsUserAnAdmin() != 0
             else:
-                # Unix/Linux/Mac: kontrollera om EUID=0
                 return os.geteuid() == 0
         except:
             return False
