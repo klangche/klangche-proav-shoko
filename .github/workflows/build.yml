@@ -13,6 +13,15 @@ name: Build
 
 on:
   push:
+    branches:
+      - main
+    paths:
+      - 'src/assets/**'
+      - 'src/gui.py'
+      - 'src/run.py'
+      - 'proav-shoko.json'
+      - 'pyproject.toml'
+      - 'requirements.txt'
     tags:
       - 'v*'
   workflow_dispatch:
@@ -71,6 +80,8 @@ jobs:
           pyinstaller --onefile --name ${{ matrix.name }}
           --paths .
           --add-data "src/assets;src/assets"
+          --add-data "src/assets/hop_limits.csv;src/assets"
+          --add-data "proav-shoko.json;."
           --hidden-import wmi
           --hidden-import pythoncom
           --hidden-import win32com.client
@@ -82,6 +93,8 @@ jobs:
           pyinstaller --onefile --name ${{ matrix.name }}
           --paths .
           --add-data "src/assets:src/assets"
+          --add-data "src/assets/hop_limits.csv:src/assets"
+          --add-data "proav-shoko.json:."
           run.py
 
       - name: Build executable (Linux)
@@ -90,6 +103,8 @@ jobs:
           pyinstaller --onefile --name ${{ matrix.name }}
           --paths .
           --add-data "src/assets:src/assets"
+          --add-data "src/assets/hop_limits.csv:src/assets"
+          --add-data "proav-shoko.json:."
           --hidden-import pyudev
           run.py
 

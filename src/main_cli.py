@@ -14,7 +14,7 @@ from src.report_generator import ReportGenerator
 from src.platform_utils import PlatformUtils
 
 
-def main():
+def main(csv_path=None):
     """Main function for CLI mode."""
     print("\n" + "=" * 60)
     print("  KLANGCHE PROAV SHOKO - USB DETECTIVE")
@@ -28,13 +28,13 @@ def main():
         print("[+] Apple Silicon detected!")
     print("-" * 60)
 
-    # 2. USB analysis - load hop limits from CSV if it exists
-    config_path = Path("hop_limits.csv")
-    if config_path.exists():
-        usb_analyzer = USBAnalyzer(str(config_path))
-        print(f"[+] Loaded hop limits from: {config_path}")
+    # 2. USB analysis - load hop limits from CSV if specified, otherwise check for hop_limits.csv
+    usb_analyzer = USBAnalyzer(csv_path) if csv_path else USBAnalyzer()
+    if csv_path:
+        print(f"[+] Loaded hop limits from: {csv_path}")
+    elif Path("hop_limits.csv").exists():
+        print(f"[+] Loaded hop limits from: hop_limits.csv")
     else:
-        usb_analyzer = USBAnalyzer()
         usb_analyzer.save_hop_limits_csv("hop_limits.csv")
         print(f"[+] Created default hop_limits.csv")
 

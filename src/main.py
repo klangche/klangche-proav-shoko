@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 ProAV Shoko - Main entry point
 Chooses between GUI and CLI based on arguments
@@ -18,17 +17,24 @@ def main():
         action='store_true',
         help='Run in CLI mode (without GUI)'
     )
+    parser.add_argument(
+        '--csv-path',
+        help='Path to custom hop_limits CSV file for USB analysis'
+    )
     args = parser.parse_args()
 
     if args.cli:
         # CLI mode
         from src.main_cli import main as cli_main
-        cli_main()
+        cli_main(args.csv_path)
     else:
         # GUI mode (default)
         try:
-            from src.gui import main as gui_main
-            gui_main()
+            from src.gui import ProAVShokoGUI
+            import tkinter as tk
+            root = tk.Tk()
+            app = ProAVShokoGUI(root, args.csv_path)
+            root.mainloop()
         except ImportError as e:
             print(f"[!] Could not start GUI: {e}")
             print("   Try --cli to run in the terminal.")

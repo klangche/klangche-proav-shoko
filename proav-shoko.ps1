@@ -15,7 +15,10 @@
 #>
 
 [CmdletBinding()]
-param()
+param(
+    [string]$CsvPath = $"",
+    [switch]$Verbose
+)
 
 $Repo = "klangche/klangche-proav-shoko"
 $Branch = "main"
@@ -42,9 +45,12 @@ if (-not $isAdmin) {
         $temp = "$env:TEMP\shoko-elevated.ps1"
         Write-Verbose "Downloading main script to: $temp"
         try {
+            $ps1Args = @("-$Verbose")
+            if ($CsvPath) { $ps1Args += "-CsvPath", $CsvPath }
+            $argumentString = $ps1Args -join ' '
             Invoke-RestMethod "$Base/proav-shoko_powershell.ps1" | Out-File $temp -Encoding UTF8
             Write-Verbose "Launching elevated PowerShell"
-            Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$temp`" -Verbose:`$$($VerbosePreference -eq 'Continue')" -Verb RunAs
+            Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `$temp $argumentString" -Verb RunAs
         } catch {
             Write-Host "Failed to download or launch: $($_.Exception.Message)" -ForegroundColor Red
         }

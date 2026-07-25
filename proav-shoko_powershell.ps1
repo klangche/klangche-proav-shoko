@@ -15,7 +15,10 @@
 #>
 
 [CmdletBinding()]
-param()
+param(
+    [string]$CsvPath = $"",
+    [switch]$Verbose
+)
 
 $ErrorActionPreference = 'Stop'
 $global:error.Clear()

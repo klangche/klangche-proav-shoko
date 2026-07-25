@@ -87,3 +87,29 @@ Download the latest version for your operating system from [Releases](https://gi
 chmod +x proav-shoko-macos-arm64
 ./proav-shoko-macos-arm64
 ```
+
+### 🔧 PowerShell Launcher (Legacy)
+
+If you're on Windows and prefer the traditional PowerShell experience, you can run ProAV Shōko using the PowerShell script that downloads the latest version from GitHub:
+
+#### Install & Run:
+```powershell
+# Download and run the latest version
+irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1 | iex
+
+# Run with custom CSV file (if you have local config)
+.\proav-shoko.ps1 -CsvPath "C:\path\to\your\csv.csv" -Verbose
+```
+
+**Features:**
+- Downloads the latest version automatically
+- Runs with or without admin rights
+- Supports both basic and elevated security modes
+- Pass custom CSV files for specific configurations
+- Full logging and error handling
+
+**Why use PowerShell:**
+- Traditional Windows automation approach
+- No need to manually download executables
+- Automatic updates when you run
+- Supports custom configurations and offline usage

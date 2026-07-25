@@ -6,6 +6,7 @@ ProAV Shoko - entry point for running from source and for packaged
 Run this from the repository root:
     python run.py          # GUI mode
     python run.py --cli    # CLI mode
+    python run.py --cli --csv-path path/to/file.csv  # CLI with custom CSV
 """
 
 import sys

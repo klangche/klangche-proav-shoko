@@ -41,7 +41,7 @@ class LogRedirector:
 class ProAVShokoGUI:
     """Main GUI for ProAV Shoko."""
 
-    def __init__(self, root):
+    def __init__(self, root, csv_path=None):
         self.root = root
         self.root.title("ProAV Shoko - USB Detective")
         self.root.geometry("1400x800")
@@ -57,6 +57,7 @@ class ProAVShokoGUI:
         self.current_data = None
         self.platform_info = None
         self.log_panel_visible = True
+        self.csv_path = csv_path
 
         # Colors
         self.colors = {
@@ -234,7 +235,20 @@ class ProAVShokoGUI:
             command=self._print_pdf_report,
             cursor='hand2'
         )
-        pdf_btn.pack(side=tk.LEFT)
+        pdf_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        log_btn = tk.Button(
+            btn_frame,
+            text="Save Logs",
+            font=('Segoe UI', 10, 'bold'),
+            bg='#2d2d44',
+            fg='white',
+            padx=15,
+            pady=5,
+            command=self._save_logs_dialog,
+            cursor='hand2'
+        )
+        log_btn.pack(side=tk.LEFT)
 
     def _on_window_resize(self, event):
         """Hide the live log panel when the window gets narrow, show it again otherwise."""
@@ -283,13 +297,13 @@ class ProAVShokoGUI:
 
             self.root.after(0, self._update_platform_label)
 
-            # 2. USB analysis - load limits from CSV if it exists
-            config_path = Path("hop_limits.csv")
-            if config_path.exists():
-                self.usb_analyzer = USBAnalyzer(str(config_path))
-                print(f"[+] Loaded limits from: {config_path}")
+            # 2. USB analysis - load limits from custom CSV if specified, otherwise default
+            self.usb_analyzer = USBAnalyzer(self.csv_path) if self.csv_path else USBAnalyzer()
+            if self.csv_path:
+                print(f"[+] Loaded limits from: {self.csv_path}")
+            elif Path("hop_limits.csv").exists():
+                print(f"[+] Loaded limits from: hop_limits.csv")
             else:
-                self.usb_analyzer = USBAnalyzer()
                 self.usb_analyzer.save_hop_limits_csv("hop_limits.csv")
                 print(f"[+] Created default hop_limits.csv")
 
@@ -497,7 +511,63 @@ class ProAVShokoGUI:
     def _on_close(self):
         """Stop the background monitoring thread cleanly before closing."""
         self._stop_monitoring()
-        self.root.destroy()
+
+    def save_logs(self, path):
+        """Save analysis logs to a file."""
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                # Add header
+                f.write(f"ProAV Shoko Log - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write("=" * 60 + "\n")
+                
+                # Platform info
+                f.write(f"Platform: {self.platform_info['os']} {self.platform_info['version']}\n")
+                f.write(f"Architecture: {self.platform_info['architecture']}\n")
+                if self.platform_info['is_apple_silicon']:
+                    f.write("Apple Silicon: Yes\n")
+                
+                # Tree and logs
+                f.write("\n" + "=" * 60 + "\n")
+                f.write("USB TREE STRUCTURE\n")
+                f.write("=" * 60 + "\n")
+                if self.current_data and self.current_data['usb_tree']:
+                    self._render_tree_to_file(f, self.current_data['usb_tree'], 0)
+                else:
+                    f.write("No USB devices found.\n")
+                
+                f.write("\n" + "=" * 60 + "\n")
+                f.write("STABILITY ASSESSMENT\n")
+                f.write("=" * 60 + "\n")
+                if self.current_data and 'stability' in self.current_data:
+                    f.write(self.usb_analyzer.get_stability_summary(self.current_data['stability']))
+                
+                f.write("\n" + "=" * 60 + "\n")
+                f.write("DISPLAY INFORMATION\n")
+                f.write("=" * 60 + "\n")
+                if self.current_data and self.current_data.get('displays'):
+                    for display in self.current_data['displays']:
+                        primary = " (Primary)" if display.get('is_primary', False) else ""
+                        f.write(f"  {display['resolution']}  {display['name']}{primary}\n")
+                elif self.current_data and not self.current_data.get('displays'):
+                    f.write("  No displays found.\n")
+                
+                print(f"[+] Log saved: {path}")
+        except Exception as e:
+            print(f"[!] Could not save log: {e}")
+
+    def _render_tree_to_file(self, f, tree, level):
+        """Recursively write USB tree to file."""
+        indent = "  " * level
+        for node in tree:
+            is_hub = node.get('is_hub', False)
+            hub_tag = " [HUB]" if is_hub else ""
+            hops = node['devpath'].count('/') if node.get('devpath') else 0
+
+            line = f"{indent}{node.get('model', 'Unknown')}{hub_tag}  hops: {hops}\n"
+            f.write(line)
+
+            if node.get('children'):
+                self._render_tree_to_file(f, node['children'], level + 1)
 
     def _export_csv_limits(self):
         """Export hop and tier limits as CSV."""
@@ -611,11 +681,78 @@ class ProAVShokoGUI:
             self.status_label.config(text=f"Error: {e}", foreground=self.colors['red'])
 
 
-def main():
-    """Start the GUI application."""
-    root = tk.Tk()
-    app = ProAVShokoGUI(root)
-    root.mainloop()
+def def _save_logs_dialog(self):
+        """Show a dialog to save logs to a file."""
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".log",
+            filetypes=[("Log files", "*.log"), ("All files", "*.*")],
+            title="Save Logs"
+        )
+        if file_path:
+            self.save_logs(file_path)
+
+    def save_logs(self, path):
+        """Save analysis logs to a file."""
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                # Add header
+                f.write(f"ProAV Shoko Log - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write("=" * 60 + "\n")
+                
+                # Platform info
+                f.write(f"Platform: {self.platform_info['os']} {self.platform_info['version']}\n")
+                f.write(f"Architecture: {self.platform_info['architecture']}\n")
+                if self.platform_info['is_apple_silicon']:
+                    f.write("Apple Silicon: Yes\n")
+                
+                # Tree and logs
+                f.write("\n" + "=" * 60 + "\n")
+                f.write("USB TREE STRUCTURE\n")
+                f.write("=" * 60 + "\n")
+                if self.current_data and self.current_data['usb_tree']:
+                    self._render_tree_to_file(f, self.current_data['usb_tree'], 0)
+                else:
+                    f.write("No USB devices found.\n")
+                
+                f.write("\n" + "=" * 60 + "\n")
+                f.write("STABILITY ASSESSMENT\n")
+                f.write("=" * 60 + "\n")
+                if self.current_data and 'stability' in self.current_data:
+                    f.write(self.usb_analyzer.get_stability_summary(self.current_data['stability']))
+                
+                f.write("\n" + "=" * 60 + "\n")
+                f.write("DISPLAY INFORMATION\n")
+                f.write("=" * 60 + "\n")
+                if self.current_data and self.current_data.get('displays'):
+                    for display in self.current_data['displays']:
+                        primary = " (Primary)" if display.get('is_primary', False) else ""
+                        f.write(f"  {display['resolution']}  {display['name']}{primary}\n")
+                elif self.current_data and not self.current_data.get('displays'):
+                    f.write("  No displays found.\n")
+                
+                print(f"[+] Log saved: {path}")
+        except Exception as e:
+            print(f"[!] Could not save log: {e}")
+
+    def _render_tree_to_file(self, f, tree, level):
+        """Recursively write USB tree to file."""
+        indent = "  " * level
+        for node in tree:
+            is_hub = node.get('is_hub', False)
+            hub_tag = " [HUB]" if is_hub else ""
+            hops = node['devpath'].count('/') if node.get('devpath') else 0
+
+            line = f"{indent}{node.get('model', 'Unknown')}{hub_tag}  hops: {hops}\n"
+            f.write(line)
+
+            if node.get('children'):
+                self._render_tree_to_file(f, node['children'], level + 1)
+
+    def main():
+        """Start the GUI application."""
+        root = tk.Tk()
+        app = ProAVShokoGUI(root)
+        root.mainloop()
 
 
 if __name__ == "__main__":
