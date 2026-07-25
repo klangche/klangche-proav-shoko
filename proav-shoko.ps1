@@ -16,7 +16,6 @@
 
 [CmdletBinding()]
 param(
-    [string]$CsvPath = $"",
     [switch]$Verbose
 )
 
@@ -46,7 +45,6 @@ if (-not $isAdmin) {
         Write-Verbose "Downloading main script to: $temp"
         try {
             $ps1Args = @("-$Verbose")
-            if ($CsvPath) { $ps1Args += "-CsvPath", $CsvPath }
             $argumentString = $ps1Args -join ' '
             Invoke-RestMethod "$Base/proav-shoko_powershell.ps1" | Out-File $temp -Encoding UTF8
             Write-Verbose "Launching elevated PowerShell"
