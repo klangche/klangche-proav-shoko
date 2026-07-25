@@ -21,6 +21,9 @@ script = "proav-shoko"
 static = "1.0.0"
 auto-update = true
 
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
