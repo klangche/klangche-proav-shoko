@@ -2,14 +2,8 @@
 Display analyzer - handles information about connected displays
 """
 
-import sys
-from typing import List, Dict, Any
-
-try:
-    from screeninfo import get_monitors
-except ImportError:
-    print("[!] screeninfo is not installed. Run: pip install screeninfo")
-    sys.exit(1)
+import importlib
+from typing import Any, Dict, List
 
 
 class DisplayAnalyzer:
@@ -24,7 +18,8 @@ class DisplayAnalyzer:
         """
         displays = []
         try:
-            monitors = get_monitors()
+            screeninfo = importlib.import_module("screeninfo")
+            monitors = screeninfo.get_monitors()
             for i, monitor in enumerate(monitors):
                 display_info = {
                     'index': i,
@@ -37,6 +32,8 @@ class DisplayAnalyzer:
                     'y': monitor.y
                 }
                 displays.append(display_info)
+        except ModuleNotFoundError:
+            print("[!] screeninfo is not installed. Run: pip install screeninfo")
         except Exception as e:
             print(f"[!] Could not read display information: {e}")
 

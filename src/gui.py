@@ -16,6 +16,10 @@ from src.display_analyzer import DisplayAnalyzer
 from src.report_generator import ReportGenerator
 from src.platform_utils import PlatformUtils
 
+# Below this window width (px), the live log panel is hidden and the
+# tree takes the full width. Above it, tree:log keeps roughly a 70/30 split.
+NARROW_WINDOW_THRESHOLD = 900
+
 
 class LogRedirector:
     """Redirects stdout/stderr to the GUI log."""
@@ -41,16 +45,18 @@ class ProAVShokoGUI:
         self.root = root
         self.root.title("ProAV Shoko - USB Detective")
         self.root.geometry("1400x800")
-        self.root.minsize(1200, 600)
+        self.root.minsize(700, 500)
 
         # Variables
         self.is_running = False
+        self.is_monitoring = False
         self.log_queue = queue.Queue()
         self.usb_analyzer = None
         self.display_analyzer = None
         self.report_generator = None
         self.current_data = None
         self.platform_info = None
+        self.log_panel_visible = True
 
         # Colors
         self.colors = {
@@ -72,9 +78,16 @@ class ProAVShokoGUI:
         style.configure('TFrame', background=self.colors['bg'])
         style.configure('TLabelframe', background=self.colors['bg'], foreground=self.colors['fg'])
         style.configure('TLabelframe.Label', background=self.colors['bg'], foreground=self.colors['fg'])
+        style.configure('TPanedwindow', background=self.colors['bg'])
 
         # Build GUI
         self._build_gui()
+
+        # React to window resizing (hide/show the log panel)
+        self.root.bind('<Configure>', self._on_window_resize)
+
+        # Clean shutdown: stop the USB monitor thread when the window closes
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
         # Start log updates
         self._update_log()
@@ -115,16 +128,15 @@ class ProAVShokoGUI:
         )
         reset_btn.pack(side=tk.RIGHT)
 
-        # === MIDDLE: Tree (left) + Log (right) ===
-        middle_frame = ttk.Frame(main_frame)
-        middle_frame.pack(fill=tk.BOTH, expand=True)
+        # === MIDDLE: Tree (left, ~70%) + Log (right, ~30%), resizable ===
+        self.middle_paned = ttk.PanedWindow(main_frame, orient=tk.HORIZONTAL)
+        self.middle_paned.pack(fill=tk.BOTH, expand=True)
 
-        # Left: USB tree with stability
-        left_frame = ttk.LabelFrame(middle_frame, text="USB Tree & Stability", padding=10)
-        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        # Left: USB tree with stability - the dominant panel
+        self.left_frame = ttk.LabelFrame(self.middle_paned, text="USB Tree & Stability", padding=10)
 
         self.tree_text = tk.Text(
-            left_frame,
+            self.left_frame,
             bg=self.colors['bg_card'],
             fg=self.colors['fg'],
             font=('Courier New', 10),
@@ -135,19 +147,17 @@ class ProAVShokoGUI:
         )
         self.tree_text.pack(fill=tk.BOTH, expand=True)
 
-        # Scrollbars for the tree
-        tree_scroll_y = ttk.Scrollbar(left_frame, orient=tk.VERTICAL, command=self.tree_text.yview)
+        tree_scroll_y = ttk.Scrollbar(self.left_frame, orient=tk.VERTICAL, command=self.tree_text.yview)
         tree_scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
-        tree_scroll_x = ttk.Scrollbar(left_frame, orient=tk.HORIZONTAL, command=self.tree_text.xview)
+        tree_scroll_x = ttk.Scrollbar(self.left_frame, orient=tk.HORIZONTAL, command=self.tree_text.xview)
         tree_scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
         self.tree_text.configure(yscrollcommand=tree_scroll_y.set, xscrollcommand=tree_scroll_x.set)
 
-        # Right: Live log
-        right_frame = ttk.LabelFrame(middle_frame, text="Live Log", padding=10)
-        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
+        # Right: Live log - connect/disconnect/re-enumeration events as they happen
+        self.right_frame = ttk.LabelFrame(self.middle_paned, text="Live Log", padding=10)
 
         self.log_text = tk.Text(
-            right_frame,
+            self.right_frame,
             bg='#0a0a1a',
             fg='#88ccff',
             font=('Courier New', 9),
@@ -158,9 +168,16 @@ class ProAVShokoGUI:
         )
         self.log_text.pack(fill=tk.BOTH, expand=True)
 
-        log_scroll_y = ttk.Scrollbar(right_frame, orient=tk.VERTICAL, command=self.log_text.yview)
+        log_scroll_y = ttk.Scrollbar(self.right_frame, orient=tk.VERTICAL, command=self.log_text.yview)
         log_scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
         self.log_text.configure(yscrollcommand=log_scroll_y.set)
+
+        self.log_text.tag_configure('event_connect', foreground=self.colors['green'])
+        self.log_text.tag_configure('event_disconnect', foreground=self.colors['orange'])
+        self.log_text.tag_configure('timestamp', foreground='#666666')
+
+        self.middle_paned.add(self.left_frame, weight=7)
+        self.middle_paned.add(self.right_frame, weight=3)
 
         # === BOTTOM: Report buttons ===
         bottom_frame = ttk.Frame(main_frame)
@@ -219,6 +236,21 @@ class ProAVShokoGUI:
         )
         pdf_btn.pack(side=tk.LEFT)
 
+    def _on_window_resize(self, event):
+        """Hide the live log panel when the window gets narrow, show it again otherwise."""
+        if event.widget != self.root:
+            return
+
+        width = self.root.winfo_width()
+        should_show = width >= NARROW_WINDOW_THRESHOLD
+
+        if should_show and not self.log_panel_visible:
+            self.middle_paned.add(self.right_frame, weight=3)
+            self.log_panel_visible = True
+        elif not should_show and self.log_panel_visible:
+            self.middle_paned.forget(self.right_frame)
+            self.log_panel_visible = False
+
     def _start_analysis(self):
         """Start the analysis in a background thread."""
         if self.is_running:
@@ -237,7 +269,7 @@ class ProAVShokoGUI:
         thread.start()
 
     def _run_analysis(self):
-        """Run the analysis in the background."""
+        """Run the initial analysis in the background, then start live monitoring."""
         try:
             # 1. Platform
             self.platform_info = PlatformUtils.get_platform_info()
@@ -249,52 +281,40 @@ class ProAVShokoGUI:
             if self.platform_info['is_apple_silicon']:
                 print("[+] Apple Silicon detected!")
 
-            # Update the platform label in the GUI thread
             self.root.after(0, self._update_platform_label)
 
-            # 2. USB analysis - load hop limits from CSV if it exists
+            # 2. USB analysis - load limits from CSV if it exists
             config_path = Path("hop_limits.csv")
             if config_path.exists():
                 self.usb_analyzer = USBAnalyzer(str(config_path))
-                print(f"[+] Loaded hop limits from: {config_path}")
+                print(f"[+] Loaded limits from: {config_path}")
             else:
                 self.usb_analyzer = USBAnalyzer()
-                # Save default CSV
                 self.usb_analyzer.save_hop_limits_csv("hop_limits.csv")
                 print(f"[+] Created default hop_limits.csv")
 
             print("\n[+] Scanning USB devices...")
-            usb_tree = self.usb_analyzer.build_tree()
-            hops_data = self.usb_analyzer.calculate_hops_and_tiers(usb_tree)
+            self._refresh_tree_and_stability()
 
-            # 3. Stability assessment for all platforms
-            stability = self.usb_analyzer.assess_stability(hops_data)
-
-            # 4. Display information
+            # 3. Display information
             print("\n[+] Scanning displays...")
             self.display_analyzer = DisplayAnalyzer()
-            displays = self.display_analyzer.get_display_info()
 
-            # Save data
-            self.current_data = {
-                'usb_tree': usb_tree,
-                'hops_data': hops_data,
-                'stability': stability,
-                'displays': displays,
-                'platform_info': self.platform_info
-            }
-
-            # 5. Update the tree in the GUI
-            self.root.after(0, self._update_tree_display, usb_tree, hops_data, stability, displays)
-
-            # 6. Print the stability summary to the log
-            print(self.usb_analyzer.get_stability_summary(stability))
-
-            print("\n[+] Analysis complete!")
+            print("\n[+] Initial scan complete. Starting live monitoring...")
             self.root.after(0, lambda: self.status_label.config(
-                text="Analysis complete",
+                text="Monitoring (live)",
                 foreground=self.colors['green']
             ))
+
+            # 4. Start live connect/disconnect monitoring. This keeps
+            # running in usbmonitor's own background thread until
+            # stop_live_monitoring() is called (on reset or window close).
+            self.usb_analyzer.start_live_monitoring(
+                on_connect=self._on_device_connect,
+                on_disconnect=self._on_device_disconnect,
+                check_every_seconds=1.0
+            )
+            self.is_monitoring = True
 
         except Exception as e:
             print(f"\n[!] Error: {e}")
@@ -306,6 +326,45 @@ class ProAVShokoGUI:
             self.is_running = False
             if hasattr(sys.stdout, 'original_stdout'):
                 sys.stdout = sys.stdout.original_stdout
+
+    def _refresh_tree_and_stability(self):
+        """Re-scan the USB tree, recompute hops/tiers/stability and update the GUI.
+        Called on startup and again after every connect/disconnect event."""
+        usb_tree = self.usb_analyzer.build_tree()
+        hops_data = self.usb_analyzer.calculate_hops_and_tiers(usb_tree)
+        stability = self.usb_analyzer.assess_stability(hops_data)
+
+        displays = self.display_analyzer.get_display_info() if self.display_analyzer else []
+
+        self.current_data = {
+            'usb_tree': usb_tree,
+            'hops_data': hops_data,
+            'stability': stability,
+            'displays': displays,
+            'platform_info': self.platform_info
+        }
+
+        self.root.after(0, self._update_tree_display, usb_tree, hops_data, stability, displays)
+        print(self.usb_analyzer.get_stability_summary(stability))
+
+    def _on_device_connect(self, device_id, device_info):
+        """Callback from usbmonitor's background thread when a device connects."""
+        model = device_info.get('ID_MODEL', device_id)
+        self.root.after(0, self._log_event, f"CONNECTED: {model}", 'event_connect')
+        self._refresh_tree_and_stability()
+
+    def _on_device_disconnect(self, device_id, device_info):
+        """Callback from usbmonitor's background thread when a device disconnects."""
+        model = device_info.get('ID_MODEL', device_id)
+        self.root.after(0, self._log_event, f"DISCONNECTED: {model}", 'event_disconnect')
+        self._refresh_tree_and_stability()
+
+    def _log_event(self, message, tag):
+        """Append a timestamped live event line to the log panel."""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.log_text.insert(tk.END, f"[{timestamp}] ", ('timestamp',))
+        self.log_text.insert(tk.END, f"{message}\n", (tag,))
+        self.log_text.see(tk.END)
 
     def _update_platform_label(self):
         """Update the platform label."""
@@ -319,12 +378,18 @@ class ProAVShokoGUI:
         """Update the tree display."""
         self.tree_text.delete(1.0, tk.END)
 
-        # Stability heading
+        # Current hops/tiers
         self.tree_text.insert(tk.END, "\n")
+        self.tree_text.insert(
+            tk.END,
+            f"Current: {hops_data['max_hops']} hops, {hops_data['max_tiers']} tiers\n",
+            ('info',)
+        )
+
+        # Stability heading
         self.tree_text.insert(tk.END, "STABILITY VERDICT\n", ('header',))
         self.tree_text.insert(tk.END, "-" * 50 + "\n", ('header',))
 
-        # Show all platforms grouped
         groups = stability.get('groups', {})
         for arch, verdicts in groups.items():
             self.tree_text.insert(tk.END, f"\n{arch}\n", ('arch_header',))
@@ -336,16 +401,20 @@ class ProAVShokoGUI:
                 tag = f'stability_{color}'
                 self.tree_text.insert(tk.END, f"  {emoji} {name}  ", (tag,))
                 self.tree_text.insert(tk.END, f"({status})  ", ('info',))
-                self.tree_text.insert(tk.END, f"max {v['max_hops']} hops\n", ('dim',))
+                self.tree_text.insert(
+                    tk.END,
+                    f"max {v['max_hops']} hops / {v['max_tiers']} tiers\n",
+                    ('dim',)
+                )
 
         # Warnings
-        warnings = [v for v in stability.get('verdicts', []) if not v['is_stable']]
+        warnings = [v for v in stability.get('verdicts', []) if not v['is_stable'] or v['warning']]
         if warnings:
             self.tree_text.insert(tk.END, "\nWARNINGS:\n", ('warning_header',))
             for w in warnings:
                 self.tree_text.insert(
                     tk.END,
-                    f"  - {w['name']}: {w['warning']} (current hops: {w['current_hops']})\n",
+                    f"  - {w['name']}: {w['warning']}\n",
                     ('warning',)
                 )
 
@@ -385,7 +454,6 @@ class ProAVShokoGUI:
         self.tree_text.tag_configure('stability_orange', foreground=self.colors['orange'])
         self.tree_text.tag_configure('stability_red', foreground=self.colors['red'])
 
-        # Scroll to top
         self.tree_text.see(1.0)
 
     def _render_tree_to_text(self, tree, level):
@@ -403,7 +471,7 @@ class ProAVShokoGUI:
                 self._render_tree_to_text(node['children'], level + 1)
 
     def _update_log(self):
-        """Update the log widget from the queue."""
+        """Update the log widget from the queue (stdout redirection)."""
         try:
             while True:
                 text = self.log_queue.get_nowait()
@@ -414,13 +482,25 @@ class ProAVShokoGUI:
         finally:
             self.root.after(100, self._update_log)
 
+    def _stop_monitoring(self):
+        """Stop live USB monitoring if it's running."""
+        if self.is_monitoring and self.usb_analyzer:
+            self.usb_analyzer.stop_live_monitoring()
+            self.is_monitoring = False
+
     def _reset_analysis(self):
         """Reset and restart the analysis."""
         if messagebox.askyesno("Reset", "Do you want to reset and restart the analysis?"):
+            self._stop_monitoring()
             self._start_analysis()
 
+    def _on_close(self):
+        """Stop the background monitoring thread cleanly before closing."""
+        self._stop_monitoring()
+        self.root.destroy()
+
     def _export_csv_limits(self):
-        """Export hop limits as CSV."""
+        """Export hop and tier limits as CSV."""
         if not self.usb_analyzer:
             messagebox.showwarning("No analysis", "Run an analysis first!")
             return
@@ -430,7 +510,7 @@ class ProAVShokoGUI:
             defaultextension=".csv",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
             initialfile=default_name,
-            title="Save hop limits as CSV"
+            title="Save hop/tier limits as CSV"
         )
 
         if not file_path:

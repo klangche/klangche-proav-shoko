@@ -5,15 +5,20 @@ USB analyzer - handles the USB tree, hops, tiers and stability assessment
 import sys
 import csv
 from collections import defaultdict
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Callable
 from pathlib import Path
 
 try:
     from usbmonitor import USBMonitor
     from usbmonitor.attributes import ID_MODEL, ID_VENDOR, DEVNAME, ID_MODEL_ID, ID_VENDOR_ID
 except ImportError:
-    print("[!] usbmonitor is not installed. Run: pip install usbmonitor")
+    print("[!] usbmonitor is not installed. Run: pip install usb-monitor")
     sys.exit(1)
+
+
+# Status ordering used to combine multiple verdicts (e.g. hops + tiers)
+# into a single overall status, worst-wins.
+_STATUS_RANK = {'STABLE': 0, 'AT LIMIT': 1, 'UNSTABLE': 2}
 
 
 class USBAnalyzer:
@@ -30,18 +35,19 @@ class USBAnalyzer:
         self.monitor = USBMonitor()
         self.devices = {}
 
-        # Load hop limits either from the given config path or the
-        # bundled CSV file in assets.
+        # Load limits either from the given config path or the bundled
+        # CSV file in assets.
         if config_path:
             self.config_path = Path(config_path)
         else:
             self.config_path = Path(__file__).parent / "assets" / "hop_limits.csv"
 
-        self.hop_limits = self._load_hop_limits()
+        self.hop_limits = self._load_limits('max_hops')
+        self.tier_limits = self._load_limits('max_tiers')
         self.platform_notes = self._load_platform_notes()
 
-    def _load_hop_limits(self) -> Dict[str, int]:
-        """Load hop limits from the CSV file."""
+    def _load_limits(self, column: str) -> Dict[str, int]:
+        """Load a numeric limit column (max_hops or max_tiers) from the CSV file."""
         limits = {}
 
         if self.config_path and self.config_path.exists():
@@ -50,21 +56,24 @@ class USBAnalyzer:
                     reader = csv.DictReader(f)
                     for row in reader:
                         platform = row.get('platform', '').strip()
-                        max_hops = row.get('max_hops', '').strip()
-                        if platform and max_hops.isdigit():
-                            limits[platform] = int(max_hops)
-                print(f"[+] Loaded hop limits from: {self.config_path}")
+                        value = row.get(column, '').strip()
+                        if platform and value.isdigit():
+                            limits[platform] = int(value)
+                if limits:
+                    print(f"[+] Loaded {column} from: {self.config_path}")
             except Exception as e:
-                print(f"[!] Could not load {self.config_path}: {e}")
-                limits = self._get_fallback_limits()
-        else:
-            print(f"[!] {self.config_path} not found, using fallback values")
+                print(f"[!] Could not load {column} from {self.config_path}: {e}")
+                limits = {}
+
+        if not limits:
+            print(f"[!] No {column} values found in {self.config_path}, using fallback values")
             limits = self._get_fallback_limits()
 
         return limits
 
     def _get_fallback_limits(self) -> Dict[str, int]:
-        """Fallback values if the CSV is missing."""
+        """Fallback values if the CSV is missing or a column can't be read.
+        Used for both max_hops and max_tiers when the CSV doesn't provide them."""
         return {
             'windows_x86': 4,
             'windows_arm': 4,
@@ -107,21 +116,23 @@ class USBAnalyzer:
 
     def save_hop_limits_csv(self, path: str) -> None:
         """
-        Save the current hop limits (and any known notes) to a CSV file.
+        Save the current hop and tier limits (and any known notes) to a CSV file.
 
         Args:
             path: Destination path for the CSV file.
         """
         notes_by_platform = {n['platform']: n for n in self.platform_notes}
+        platforms = sorted(set(self.hop_limits) | set(self.tier_limits))
 
         with open(path, 'w', encoding='utf-8', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['platform', 'max_hops', 'description', 'notes'])
-            for platform, max_hops in self.hop_limits.items():
+            writer.writerow(['platform', 'max_hops', 'max_tiers', 'description', 'notes'])
+            for platform in platforms:
                 note = notes_by_platform.get(platform, {})
                 writer.writerow([
                     platform,
-                    max_hops,
+                    self.hop_limits.get(platform, ''),
+                    self.tier_limits.get(platform, ''),
                     note.get('description', ''),
                     note.get('note', '')
                 ])
@@ -181,7 +192,11 @@ class USBAnalyzer:
         return None
 
     def calculate_hops_and_tiers(self, tree: List[Dict]) -> Dict[str, Any]:
-        """Calculates hops and tiers from the USB tree."""
+        """Calculates hops and tiers from the USB tree.
+
+        - hops: depth of the deepest device in the chain (root = 0)
+        - tiers: number of distinct depth levels populated by a device
+        """
         if not tree:
             return {
                 'max_hops': 0,
@@ -214,76 +229,88 @@ class USBAnalyzer:
             'all_hops': depths
         }
 
+    def _evaluate(self, current: int, limit: int) -> Dict[str, Any]:
+        """Compares a current value (hops or tiers) against its limit and
+        returns the STABLE / AT LIMIT / UNSTABLE verdict for that dimension."""
+        if current < limit:
+            return {'status': 'STABLE', 'warning': None}
+        elif current == limit:
+            return {'status': 'AT LIMIT', 'warning': f"at the limit ({current}/{limit})"}
+        else:
+            return {'status': 'UNSTABLE', 'warning': f"exceeds limit ({current}/{limit})"}
+
     def assess_stability(self, hops_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Assesses stability for ALL platforms based on hops.
+        Assesses stability for ALL platforms based on BOTH hops and tiers.
 
-        Color logic:
-        - Green: hops < max_hops (STABLE)
-        - Orange: hops == max_hops (AT LIMIT / UNCERTAIN)
-        - Red: hops > max_hops (UNSTABLE)
+        Each platform has its own max_hops and max_tiers limit. The combined
+        verdict for a platform is the worse of the two:
+        - Green (STABLE): both hops and tiers are under their limit
+        - Orange (AT LIMIT): the worse of the two is exactly at its limit
+        - Red (UNSTABLE): the worse of the two exceeds its limit
         """
-        max_hops = hops_data.get('max_hops', 0)
+        current_hops = hops_data.get('max_hops', 0)
+        current_tiers = hops_data.get('max_tiers', 0)
 
-        # Define all platforms with their hop limits
+        # Define all platforms with their hop and tier limits
         platforms = [
             # x86/x64
-            {'id': 'windows_x86', 'name': 'Windows', 'arch': 'x86/x64', 'max_hops': self.hop_limits.get('windows_x86', 4)},
-            {'id': 'mac_intel', 'name': 'Mac Intel', 'arch': 'x86/x64', 'max_hops': self.hop_limits.get('mac_intel', 7)},
-            {'id': 'linux_x86', 'name': 'Linux', 'arch': 'x86/x64', 'max_hops': self.hop_limits.get('linux_x86', 4)},
+            {'id': 'windows_x86', 'name': 'Windows', 'arch': 'x86/x64'},
+            {'id': 'mac_intel', 'name': 'Mac Intel', 'arch': 'x86/x64'},
+            {'id': 'linux_x86', 'name': 'Linux', 'arch': 'x86/x64'},
             # ARM
-            {'id': 'windows_arm', 'name': 'Windows', 'arch': 'ARM', 'max_hops': self.hop_limits.get('windows_arm', 4)},
-            {'id': 'mac_apple_silicon', 'name': 'Mac Apple Silicon', 'arch': 'ARM', 'max_hops': self.hop_limits.get('mac_apple_silicon', 3)},
-            {'id': 'linux_arm', 'name': 'Linux', 'arch': 'ARM', 'max_hops': self.hop_limits.get('linux_arm', 4)},
+            {'id': 'windows_arm', 'name': 'Windows', 'arch': 'ARM'},
+            {'id': 'mac_apple_silicon', 'name': 'Mac Apple Silicon', 'arch': 'ARM'},
+            {'id': 'linux_arm', 'name': 'Linux', 'arch': 'ARM'},
             # Mobile
-            {'id': 'iphone_lightning', 'name': 'iPhone Lightning', 'arch': 'Mobile', 'max_hops': self.hop_limits.get('iphone_lightning', 2)},
-            {'id': 'iphone_usbc', 'name': 'iPhone USB-C', 'arch': 'Mobile', 'max_hops': self.hop_limits.get('iphone_usbc', 3)},
-            {'id': 'samsung_usbc', 'name': 'Samsung USB-C', 'arch': 'Mobile', 'max_hops': self.hop_limits.get('samsung_usbc', 4)},
-            {'id': 'android_usbc', 'name': 'Android USB-C', 'arch': 'Mobile', 'max_hops': self.hop_limits.get('android_usbc', 4)},
-            {'id': 'ipad_lightning', 'name': 'iPad Lightning', 'arch': 'Mobile', 'max_hops': self.hop_limits.get('ipad_lightning', 2)},
-            {'id': 'ipad_usbc', 'name': 'iPad USB-C', 'arch': 'Mobile', 'max_hops': self.hop_limits.get('ipad_usbc', 3)}
+            {'id': 'iphone_lightning', 'name': 'iPhone Lightning', 'arch': 'Mobile'},
+            {'id': 'iphone_usbc', 'name': 'iPhone USB-C', 'arch': 'Mobile'},
+            {'id': 'samsung_usbc', 'name': 'Samsung USB-C', 'arch': 'Mobile'},
+            {'id': 'android_usbc', 'name': 'Android USB-C', 'arch': 'Mobile'},
+            {'id': 'ipad_lightning', 'name': 'iPad Lightning', 'arch': 'Mobile'},
+            {'id': 'ipad_usbc', 'name': 'iPad USB-C', 'arch': 'Mobile'}
         ]
 
-        # Assess each platform with the color logic above
         verdicts = []
         for platform in platforms:
-            max_allowed = platform['max_hops']
+            max_hops_allowed = self.hop_limits.get(platform['id'], 4)
+            max_tiers_allowed = self.tier_limits.get(platform['id'], max_hops_allowed)
 
-            # Color logic:
-            # - Green: hops < max_hops
-            # - Orange: hops == max_hops
-            # - Red: hops > max_hops
-            if max_hops < max_allowed:
-                status = 'STABLE'
-                color = 'green'
-                emoji = '🟢'
-                warning = None
-            elif max_hops == max_allowed:
-                status = 'AT LIMIT'
-                color = 'orange'
-                emoji = '🟠'
-                warning = f"Max {max_allowed} hops, at the limit!"
-            else:  # max_hops > max_allowed
-                status = 'UNSTABLE'
-                color = 'red'
-                emoji = '🔴'
-                warning = f"Exceeds max {max_allowed} hops!"
+            hops_eval = self._evaluate(current_hops, max_hops_allowed)
+            tiers_eval = self._evaluate(current_tiers, max_tiers_allowed)
+
+            # Combined status is the worse of the two dimensions
+            if _STATUS_RANK[hops_eval['status']] >= _STATUS_RANK[tiers_eval['status']]:
+                status = hops_eval['status']
+            else:
+                status = tiers_eval['status']
+
+            warnings = []
+            if hops_eval['warning']:
+                warnings.append(f"Hops {hops_eval['warning']}")
+            if tiers_eval['warning']:
+                warnings.append(f"Tiers {tiers_eval['warning']}")
+            warning = "; ".join(warnings) if warnings else None
+
+            color_map = {'STABLE': 'green', 'AT LIMIT': 'orange', 'UNSTABLE': 'red'}
+            emoji_map = {'STABLE': '🟢', 'AT LIMIT': '🟠', 'UNSTABLE': '🔴'}
 
             verdict = {
                 'id': platform['id'],
                 'name': platform['name'],
                 'arch': platform['arch'],
-                'max_hops': max_allowed,
-                'current_hops': max_hops,
+                'max_hops': max_hops_allowed,
+                'current_hops': current_hops,
+                'max_tiers': max_tiers_allowed,
+                'current_tiers': current_tiers,
                 'status': status,
-                'color': color,
-                'emoji': emoji,
-                'is_stable': max_hops <= max_allowed,
+                'color': color_map[status],
+                'emoji': emoji_map[status],
+                'is_stable': status != 'UNSTABLE',
                 'warning': warning
             }
             verdicts.append(verdict)
 
-        # Group by architecture for display
         groups = {}
         for v in verdicts:
             if v['arch'] not in groups:
@@ -291,11 +318,11 @@ class USBAnalyzer:
             groups[v['arch']].append(v)
 
         return {
-            'max_hops': max_hops,
+            'max_hops': current_hops,
+            'max_tiers': current_tiers,
             'verdicts': verdicts,
             'groups': groups,
-            'overall_worst': max([v['status'] for v in verdicts],
-                                key=lambda x: {'STABLE': 0, 'AT LIMIT': 1, 'UNSTABLE': 2}[x])
+            'overall_worst': max([v['status'] for v in verdicts], key=lambda x: _STATUS_RANK[x])
         }
 
     def get_stability_summary(self, stability_data: Dict[str, Any]) -> str:
@@ -310,11 +337,41 @@ class USBAnalyzer:
             for v in verdicts:
                 lines.append(f"  {v['emoji']} {v['name']}")
 
-        # Add warnings
         warnings = [v for v in stability_data.get('verdicts', []) if v['warning']]
         if warnings:
             lines.append("\n[!] WARNINGS:")
             for w in warnings:
-                lines.append(f"  - {w['name']}: {w['warning']} (current hops: {w['current_hops']})")
+                lines.append(f"  - {w['name']}: {w['warning']}")
 
         return '\n'.join(lines)
+
+    # --- Live monitoring -------------------------------------------------
+    #
+    # Wraps usbmonitor's built-in polling thread. This does NOT capture
+    # protocol-level USB handshakes (link training, renegotiation, CRC
+    # errors) - that would require OS-specific low-level tracing (ETW on
+    # Windows, usbmon/ftrace on Linux, IOKit on macOS) and is out of scope.
+    # What this does capture: every time a device connects, disconnects,
+    # or re-enumerates, which in practice is a solid proxy for instability -
+    # a device that's struggling to hold a link over too many hops will
+    # show up as repeated connect/disconnect cycles here.
+
+    def start_live_monitoring(
+        self,
+        on_connect: Callable[[str, Dict], None],
+        on_disconnect: Callable[[str, Dict], None],
+        check_every_seconds: float = 1.0
+    ) -> None:
+        """Starts background monitoring for USB connect/disconnect events."""
+        self.monitor.start_monitoring(
+            on_connect=on_connect,
+            on_disconnect=on_disconnect,
+            check_every_seconds=check_every_seconds
+        )
+
+    def stop_live_monitoring(self) -> None:
+        """Stops background USB monitoring."""
+        try:
+            self.monitor.stop_monitoring()
+        except Exception as e:
+            print(f"[!] Could not stop USB monitoring cleanly: {e}")

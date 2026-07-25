@@ -15,6 +15,11 @@ try:
 except ImportError:
     print("[!] weasyprint is not installed. PDF generation is disabled.")
     HTML = None
+except OSError:
+    # weasyprint is installed but its native libraries (Pango/GTK) are
+    # missing. This is common on Windows and minimal Linux installs.
+    print("[!] weasyprint's native libraries (Pango/GTK) are not available. PDF generation is disabled.")
+    HTML = None
 
 
 class ReportGenerator:
@@ -74,17 +79,19 @@ class ReportGenerator:
                 status = v['status']
                 max_hops = v['max_hops']
                 current_hops = v['current_hops']
+                max_tiers = v['max_tiers']
+                current_tiers = v['current_tiers']
                 border_color = color_map.get(color, '#666')
 
-                # Show hops info
                 hops_info = f"{current_hops}/{max_hops}"
+                tiers_info = f"{current_tiers}/{max_tiers}"
 
                 lines.append(f'''
                     <div style="background:#1a1a2e;padding:10px 15px;border-radius:6px;border-left:3px solid {border_color};">
                         <span style="font-size:1.2em;">{emoji}</span>
                         <span style="font-weight:bold;">{name}</span>
                         <span style="color:#888;font-size:0.9em;">({status})</span>
-                        <span style="color:#666;font-size:0.8em;">hops: {hops_info}</span>
+                        <span style="color:#666;font-size:0.8em;">hops: {hops_info} &bull; tiers: {tiers_info}</span>
                     </div>
                 ''')
             lines.append('</div>')
