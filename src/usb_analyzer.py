@@ -12,7 +12,7 @@ try:
     from usbmonitor import USBMonitor
     from usbmonitor.attributes import ID_MODEL, ID_VENDOR, DEVNAME, ID_MODEL_ID, ID_VENDOR_ID
 except ImportError:
-    print("[!] usbmonitor is not installed. Run: pip install usb-monitor")
+    print("usbmonitor is not installed. Run: pip install usb-monitor")
     sys.exit(1)
 
 
@@ -60,13 +60,13 @@ class USBAnalyzer:
                         if platform and value.isdigit():
                             limits[platform] = int(value)
                 if limits:
-                    print(f"[+] Loaded {column} from: {self.config_path}")
+                    pass
             except Exception as e:
-                print(f"[!] Could not load {column} from {self.config_path}: {e}")
+                print(f"Could not load {column} from {self.config_path}: {e}")
                 limits = {}
 
         if not limits:
-            print(f"[!] No {column} values found in {self.config_path}, using fallback values")
+            print(f"No {column} values found in {self.config_path}, using fallback values")
             limits = self._get_fallback_limits()
 
         return limits
@@ -107,7 +107,7 @@ class USBAnalyzer:
                                 'note': note
                             })
             except Exception as e:
-                print(f"[!] Could not read notes: {e}")
+                print(f"Could not read notes: {e}")
         return notes
 
     def get_platform_notes(self) -> List[Dict[str, str]]:
@@ -137,59 +137,145 @@ class USBAnalyzer:
                     note.get('note', '')
                 ])
 
+    def _parse_devpath(self, devname: str) -> Dict[str, Any]:
+        """Parse a Windows device instance path into components."""
+        result = {'hub_id': '', 'port': 0, 'is_composite_interface': False, 'depth': 0}
+
+        if not devname:
+            return result
+
+        parts = devname.split('\\')
+        if len(parts) < 3:
+            result['depth'] = 0
+            return result
+
+        hwid = parts[1]  # e.g. VID_0B05&PID_1ACE or VID_0B05&PID_1ACE&MI_00
+        instance = parts[2]  # e.g. T6MPKRD00HWM5 or 6&1A89C1F2&0&0000
+
+        result['is_composite_interface'] = '&MI_' in hwid
+
+        # Parse Windows hub instance path: HubHi&HubLo&Flags&Port
+        instance_parts = instance.split('&')
+        if len(instance_parts) >= 4 and all(p.isdigit() or all(c in '0123456789ABCDEFabcdef' for c in p) for p in instance_parts[:2]):
+            result['hub_id'] = f"{instance_parts[0]}&{instance_parts[1]}"
+            try:
+                result['port'] = int(instance_parts[3])
+            except ValueError:
+                result['port'] = 0
+            result['depth'] = 2
+        elif not instance_parts[0].startswith('6&') and not instance_parts[0].startswith('5&'):
+            # Serial number or simple instance - root level
+            result['depth'] = 0
+        else:
+            result['depth'] = 1
+
+        return result
+
     def build_tree(self) -> List[Dict[str, Any]]:
         """Builds a hierarchical tree of USB devices."""
         try:
             dev_dict = self.monitor.get_available_devices()
             self.devices = dev_dict
 
-            tree = []
-            for dev_name, attributes in dev_dict.items():
-                devpath = attributes.get('devpath', '')
+            # Phase 1: create nodes with parsed Windows path info
+            nodes = {}
+            for dev_name, attrs in dev_dict.items():
+                devname = attrs.get('DEVNAME', dev_name)
+                path_info = self._parse_devpath(devname)
 
-                node = {
+                nodes[dev_name] = {
                     'name': dev_name,
-                    'devpath': devpath,
-                    'attributes': attributes,
+                    'devpath': devname,
+                    'attributes': attrs,
                     'children': [],
-                    'is_hub': self._is_hub(attributes),
-                    'model': attributes.get(ID_MODEL, 'Unknown model'),
-                    'vendor': attributes.get(ID_VENDOR, 'Unknown vendor'),
-                    'product': attributes.get('ID_MODEL', 'Unknown product')
+                    'is_hub': 'hub' in attrs.get(ID_MODEL, '').lower() or 'hub' in attrs.get('ID_MODEL', '').lower(),
+                    'model': attrs.get(ID_MODEL_FROM_DATABASE, attrs.get(ID_MODEL, 'Unknown')),
+                    'vendor': attrs.get(ID_VENDOR_FROM_DATABASE, attrs.get(ID_VENDOR, 'Unknown')),
+                    'is_composite_interface': path_info['is_composite_interface'],
+                    'hub_id': path_info['hub_id'],
+                    'port': path_info['port'],
+                    'depth': path_info['depth']
                 }
 
-                if not devpath or devpath.count('/') <= 1:
-                    tree.append(node)
+            # Phase 2: build tree structure
+            # Find root USB controllers/hubs
+            hubs_map = {}  # hub_id -> list of nodes
+            root_nodes = []
+            composite_parents = {}  # vid_pid -> list of MI child nodes
+
+            for name, node in nodes.items():
+                devname = node['devpath']
+                parts = devname.split('\\')
+                hwid = parts[1] if len(parts) >= 3 else ''
+                vid_pid = hwid.split('&MI_')[0] if '&MI_' in hwid else hwid
+
+                if node['is_composite_interface']:
+                    composite_parents.setdefault(vid_pid, []).append(node)
+                elif node['hub_id']:
+                    hubs_map.setdefault(node['hub_id'], []).append(node)
                 else:
-                    parent_path = '/'.join(devpath.split('/')[:-1])
-                    parent = self._find_node_by_path(tree, parent_path)
-                    if parent:
-                        parent['children'].append(node)
-                    else:
-                        tree.append(node)
+                    root_nodes.append(node)
+
+            # Create hub entries for each hub_id group
+            tree = []
+            for hub_id, children in hubs_map.items():
+                hub_node = {
+                    'name': f"HUB [{hub_id}]",
+                    'devpath': f"\\hub_{hub_id}",
+                    'attributes': {},
+                    'children': children,
+                    'is_hub': True,
+                    'model': f"USB Hub ({hub_id})",
+                    'vendor': 'Generic',
+                    'is_composite_interface': False,
+                    'hub_id': hub_id,
+                    'port': 0,
+                    'depth': 1
+                }
+                root_nodes.append(hub_node)
+
+            # Attach composite interfaces as children of their parent
+            for vid_pid, interfaces in composite_parents.items():
+                parent = None
+                for rn in root_nodes:
+                    if vid_pid in rn.get('devpath', '') or rn.get('devpath', '').startswith(vid_pid):
+                        parent = rn
+                        break
+                if parent:
+                    for iface in interfaces:
+                        parent.setdefault('children', []).append(iface)
+                else:
+                    composite_node = {
+                        'name': vid_pid,
+                        'devpath': vid_pid,
+                        'attributes': {},
+                        'children': interfaces,
+                        'is_hub': False,
+                        'model': f"Composite ({vid_pid})",
+                        'vendor': 'Generic',
+                        'is_composite_interface': False,
+                        'hub_id': '',
+                        'port': 0,
+                        'depth': 1
+                    }
+                    root_nodes.append(composite_node)
+
+            tree = root_nodes
+
+            # Calculate hops (depth) for each node
+            def assign_hops(nodes, depth=0):
+                for n in nodes:
+                    n['hops'] = depth
+                    if n.get('children'):
+                        assign_hops(n['children'], depth + 1)
+
+            assign_hops(tree, 0)
 
             return tree
 
         except Exception as e:
-            print(f"[!] Could not read USB devices: {e}")
+            print(f"Could not read USB devices: {e}")
             return []
-
-    def _is_hub(self, attributes: Dict) -> bool:
-        """Check whether a device is a hub."""
-        model = attributes.get(ID_MODEL, '').lower()
-        product = attributes.get('ID_MODEL', '').lower()
-        return 'hub' in model or 'hub' in product
-
-    def _find_node_by_path(self, tree: List[Dict], path: str) -> Optional[Dict]:
-        """Find the node with a specific devpath in the tree."""
-        for node in tree:
-            if node['devpath'] == path:
-                return node
-            if node['children']:
-                found = self._find_node_by_path(node['children'], path)
-                if found:
-                    return found
-        return None
 
     def calculate_hops_and_tiers(self, tree: List[Dict]) -> Dict[str, Any]:
         """Calculates hops and tiers from the USB tree.
@@ -209,11 +295,11 @@ class USBAnalyzer:
         devices_by_hops = defaultdict(list)
 
         def traverse(node, depth):
-            hops = node['devpath'].count('/') if node.get('devpath') else depth
+            hops = node.get('hops', depth)
             devices_by_hops[hops].append(node['name'])
             depths.append(hops)
 
-            for child in node['children']:
+            for child in node.get('children', []):
                 traverse(child, depth + 1)
 
         for root in tree:
@@ -328,20 +414,27 @@ class USBAnalyzer:
     def get_stability_summary(self, stability_data: Dict[str, Any]) -> str:
         """Builds a text summary of the stability assessment."""
         lines = []
-        lines.append("[+] Stability Verdict:")
-        lines.append("-" * 60)
+        lines.append(f"Current system: {stability_data.get('max_hops', 0)} hops, {stability_data.get('max_tiers', 0)} tiers")
+        lines.append("")
 
         groups = stability_data.get('groups', {})
         for arch, verdicts in groups.items():
-            lines.append(f"\n{arch}")
+            lines.append(f"  {arch}")
             for v in verdicts:
-                lines.append(f"  {v['emoji']} {v['name']}")
+                status_char = '+' if v['color'] == 'green' else ('~' if v['color'] == 'orange' else '!')
+                lines.append(
+                    f"    {status_char} {v['name']:<20s} "
+                    f"{v['status']:<9s} "
+                    f"hops {v['current_hops']}/{v['max_hops']}  "
+                    f"tiers {v['current_tiers']}/{v['max_tiers']}"
+                )
 
         warnings = [v for v in stability_data.get('verdicts', []) if v['warning']]
         if warnings:
-            lines.append("\n[!] WARNINGS:")
+            lines.append("")
+            lines.append("  WARNINGS:")
             for w in warnings:
-                lines.append(f"  - {w['name']}: {w['warning']}")
+                lines.append(f"    - {w['name']}: {w['warning']}")
 
         return '\n'.join(lines)
 
@@ -374,4 +467,4 @@ class USBAnalyzer:
         try:
             self.monitor.stop_monitoring()
         except Exception as e:
-            print(f"[!] Could not stop USB monitoring cleanly: {e}")
+            print(f"Could not stop USB monitoring cleanly: {e}")

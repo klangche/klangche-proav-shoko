@@ -1,5 +1,5 @@
 """
-Report generator - creates HTML and PDF reports
+Report generator - creates professional HTML and PDF reports
 """
 
 import os
@@ -12,21 +12,14 @@ from typing import Dict, List, Any, Optional
 
 try:
     from weasyprint import HTML
-except ImportError:
-    print("[!] weasyprint is not installed. PDF generation is disabled.")
-    HTML = None
-except OSError:
-    # weasyprint is installed but its native libraries (Pango/GTK) are
-    # missing. This is common on Windows and minimal Linux installs.
-    print("[!] weasyprint's native libraries (Pango/GTK) are not available. PDF generation is disabled.")
+except (ImportError, OSError):
     HTML = None
 
 
 class ReportGenerator:
-    """Generates HTML and PDF reports."""
+    """Generates professional HTML and PDF reports."""
 
     def __init__(self, output_dir: str = "reports"):
-        """Initialize the report generator."""
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -41,93 +34,78 @@ class ReportGenerator:
         platform_notes: Optional[List[Dict[str, str]]] = None,
         custom_path: Optional[str] = None
     ) -> str:
-        """Generates an HTML report with a dark background."""
         html_content = self._build_html_content(
             usb_tree, hops_data, stability, displays, platform_info, platform_notes
         )
-
         if custom_path:
             filename = Path(custom_path)
         else:
             filename = self.output_dir / f"proav-shoko_report_{self.timestamp}.html"
-
         filename.parent.mkdir(parents=True, exist_ok=True)
-
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(html_content)
-
         return str(filename)
 
+    def _build_mermaid_tree(self, usb_tree: List[Dict]) -> str:
+        lines = ["graph TD"]
+
+        def add_node(node: Dict, parent_id: Optional[str] = None, depth: int = 0) -> str:
+            node_id = f"n{node.get('devpath', '').replace('/', '_').replace('-', '_').replace('.', '_')}"
+            if not node_id or node_id == "n":
+                node_id = f"n{id(node)}"
+            model = node.get('model', node.get('name', 'Unknown Device'))
+            is_hub = node.get('is_hub', False)
+            devpath = node.get('devpath', '')
+            hops = devpath.count('/') if devpath else 0
+            label = f"{model}{' [HUB]' if is_hub else ''} ({hops})"
+            shape = ":::hub" if is_hub else ":::device"
+            lines.append(f'    {node_id}["{label}"]{shape}')
+            if parent_id:
+                lines.append(f"    {parent_id} --> {node_id}")
+            if node.get('children'):
+                for child in node['children']:
+                    add_node(child, node_id, depth + 1)
+            return node_id
+
+        for root in usb_tree:
+            add_node(root)
+
+        lines.append("    classDef hub fill:#1a1a2e,stroke:#ffaa00,stroke-width:2px,color:#ffaa00")
+        lines.append("    classDef device fill:#1a1a2e,stroke:#00d4ff,stroke-width:1px,color:#e0e0e0")
+        return "\n".join(lines)
+
     def _build_stability_html(self, stability_data: Dict[str, Any]) -> str:
-        """Builds the HTML for the stability overview across all platforms."""
-        lines = []
+        parts = []
         groups = stability_data.get('groups', {})
 
-        color_map = {
-            'green': '#00cc66',
-            'orange': '#ff8800',
-            'red': '#ff3333'
-        }
-
         for arch, verdicts in groups.items():
-            lines.append(f'<h4 style="color:#88ccff;margin:15px 0 10px 0;">{arch}</h4>')
-            lines.append('<div style="display:flex;flex-wrap:wrap;gap:10px;margin:5px 0 15px 0;">')
+            rows = []
             for v in verdicts:
-                color = v['color']
-                emoji = v['emoji']
-                name = v['name']
-                status = v['status']
-                max_hops = v['max_hops']
-                current_hops = v['current_hops']
-                max_tiers = v['max_tiers']
-                current_tiers = v['current_tiers']
-                border_color = color_map.get(color, '#666')
+                color = v.get('color', 'green')
+                status_class = "s-stable" if color == "green" else ("s-warn" if color == "orange" else "s-fail")
+                rows.append(
+                    f'<tr class="{status_class}">'
+                    f'<td class="s-name">{v["emoji"]} {v["name"]}</td>'
+                    f'<td class="s-status">{v["status"]}</td>'
+                    f'<td class="s-metric">{v["current_hops"]}<span class="s-sep">/</span>{v["max_hops"]}</td>'
+                    f'<td class="s-metric">{v["current_tiers"]}<span class="s-sep">/</span>{v["max_tiers"]}</td>'
+                    f'</tr>'
+                )
+            parts.append(
+                f'<div class="s-arch">'
+                f'<div class="s-arch-name">{arch}</div>'
+                f'<table class="s-table"><tbody>{"".join(rows)}</tbody></table>'
+                f'</div>'
+            )
 
-                hops_info = f"{current_hops}/{max_hops}"
-                tiers_info = f"{current_tiers}/{max_tiers}"
-
-                lines.append(f'''
-                    <div style="background:#1a1a2e;padding:10px 15px;border-radius:6px;border-left:3px solid {border_color};">
-                        <span style="font-size:1.2em;">{emoji}</span>
-                        <span style="font-weight:bold;">{name}</span>
-                        <span style="color:#888;font-size:0.9em;">({status})</span>
-                        <span style="color:#666;font-size:0.8em;">hops: {hops_info} &bull; tiers: {tiers_info}</span>
-                    </div>
-                ''')
-            lines.append('</div>')
-
-        # Warnings
-        warnings = [v for v in stability_data.get('verdicts', []) if v['warning']]
+        warnings = [v for v in stability_data.get('verdicts', []) if v.get('warning')]
         if warnings:
-            lines.append('''
-                <div style="background:#ff3333;color:#fff;padding:12px 20px;border-radius:8px;margin:15px 0;">
-                    <span style="font-weight:bold;">[!] WARNINGS:</span><br>
-            ''')
+            warn_rows = []
             for w in warnings:
-                lines.append(f'- {w["name"]}: {w["warning"]} (current hops: {w["current_hops"]})<br>')
-            lines.append('</div>')
+                warn_rows.append(f'<div class="w-item">[{w["name"]}] {w["warning"]} (hops: {w["current_hops"]})</div>')
+            parts.append(f'<div class="s-warnings">{"".join(warn_rows)}</div>')
 
-        return ''.join(lines)
-
-    def _build_notes_html(self, platform_notes: Optional[List[Dict[str, str]]]) -> str:
-        """Builds the HTML for the platform notes at the bottom of the report."""
-        if not platform_notes:
-            return ''
-
-        lines = []
-        lines.append('<div style="margin-top:40px;padding-top:20px;border-top:2px solid #333;">')
-        lines.append('<h3 style="color:#888;font-size:0.9em;margin-bottom:10px;">Platform notes</h3>')
-        lines.append('<div style="font-size:0.7em;color:#666;line-height:1.4;">')
-
-        for note in platform_notes:
-            platform = note.get('platform', '').replace('_', ' ').title()
-            description = note.get('description', '')
-            note_text = note.get('note', '')
-            lines.append(f'<p style="margin:4px 0;"><strong>{platform}</strong> ({description}): {note_text}</p>')
-
-        lines.append('</div>')
-        lines.append('</div>')
-        return ''.join(lines)
+        return "".join(parts)
 
     def _build_html_content(
         self,
@@ -138,321 +116,169 @@ class ReportGenerator:
         platform_info: Dict[str, Any],
         platform_notes: Optional[List[Dict[str, str]]] = None
     ) -> str:
-        """Builds the HTML content."""
-        usb_html = self._render_tree(usb_tree)
-        display_html = self._render_displays(displays)
+        mermaid_tree = self._build_mermaid_tree(usb_tree)
         stability_html = self._build_stability_html(stability)
-        notes_html = self._build_notes_html(platform_notes)
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        hub_count = sum(1 for d in usb_tree if d.get('is_hub', False))
 
-        overall_color = stability.get('overall_worst', 'STABLE')
-        color_map = {
-            'STABLE': '#00cc66',
-            'AT LIMIT': '#ff8800',
-            'UNSTABLE': '#ff3333'
-        }
-        summary_color = color_map.get(overall_color, '#00cc66')
+        apple_tag = ""
+        if platform_info.get('is_apple_silicon'):
+            apple_tag = '<span class="tag tag-apple">Apple Silicon</span>'
 
-        return f"""
-<!DOCTYPE html>
-<html lang="en">
+        displays_html = ""
+        if displays:
+            items = []
+            for d in displays:
+                prim = " &middot; Primary" if d.get('is_primary', False) else ""
+                items.append(
+                    f'<div class="disp-item">'
+                    f'<div class="disp-res">{d["resolution"]}</div>'
+                    f'<div class="disp-name">{d["name"]}{prim}</div>'
+                    f'</div>'
+                )
+            displays_html = f'<div class="disp-grid">{"".join(items)}</div>'
+        else:
+            displays_html = '<p class="muted">No displays detected.</p>'
+
+        notes_html = ""
+        if platform_notes:
+            ns = []
+            for n in platform_notes:
+                p = n.get('platform', '').replace('_', ' ').title()
+                ns.append(
+                    f'<div class="note"><span class="note-p">{p}</span> '
+                    f'<span class="note-d">{n.get("description", "")}</span> &mdash; {n.get("note", "")}</div>'
+                )
+            notes_html = f'<div class="notes">{"".join(ns)}</div>'
+
+        return f"""<!DOCTYPE html><html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ProAV Shoko - USB Analysis</title>
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{
-            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-            background-color: #1a1a2e;
-            color: #e0e0e0;
-            padding: 20px;
-            line-height: 1.6;
-        }}
-        .container {{
-            max-width: 1200px;
-            margin: 0 auto;
-            background: #16213e;
-            padding: 30px;
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-        }}
-        h1 {{
-            color: #00d4ff;
-            font-size: 2.2em;
-            border-bottom: 2px solid #00d4ff;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-        }}
-        h2 {{
-            color: #00d4ff;
-            margin-top: 30px;
-            margin-bottom: 15px;
-            font-size: 1.4em;
-        }}
-        h3 {{
-            color: #88ccff;
-            margin-top: 20px;
-            margin-bottom: 10px;
-            font-size: 1.1em;
-        }}
-        .subtitle {{
-            color: #aaa;
-            font-size: 0.9em;
-            margin-bottom: 30px;
-        }}
-        .card {{
-            background: #1a1a2e;
-            border-left: 4px solid {summary_color};
-            padding: 15px 20px;
-            margin: 20px 0;
-            border-radius: 6px;
-        }}
-        .tree {{
-            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-            font-size: 0.9em;
-            padding: 10px 0;
-        }}
-        .tree ul {{
-            list-style: none;
-            padding-left: 20px;
-        }}
-        .tree li {{
-            padding: 3px 0;
-            border-left: 2px dotted #444;
-            padding-left: 15px;
-            margin-left: 10px;
-        }}
-        .tree .hub {{
-            color: #ffaa00;
-            font-weight: bold;
-        }}
-        .tree .device {{
-            color: #88ccff;
-        }}
-        .hops-badge {{
-            background: #333;
-            color: #fff;
-            border-radius: 12px;
-            padding: 0 10px;
-            font-size: 0.8em;
-            margin-left: 10px;
-        }}
-        .stats {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-            margin: 20px 0;
-        }}
-        .stat-item {{
-            background: #1a1a2e;
-            padding: 15px;
-            border-radius: 8px;
-            text-align: center;
-            border: 1px solid #333;
-        }}
-        .stat-value {{
-            font-size: 2em;
-            font-weight: bold;
-            color: #00d4ff;
-        }}
-        .stat-label {{
-            color: #aaa;
-            font-size: 0.8em;
-        }}
-        .display-grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin: 10px 0;
-        }}
-        .display-item {{
-            background: #1a1a2e;
-            padding: 15px;
-            border-radius: 8px;
-            border: 1px solid #333;
-            text-align: center;
-        }}
-        .display-item .resolution {{
-            font-size: 1.4em;
-            color: #00d4ff;
-            font-weight: bold;
-        }}
-        .platform-info {{
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            background: #1a1a2e;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 10px 0;
-        }}
-        .platform-tag {{
-            background: #333;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-size: 0.8em;
-        }}
-        .apple-silicon {{
-            background: #ff8800;
-            color: #000;
-            font-weight: bold;
-        }}
-        .footer {{
-            margin-top: 20px;
-            padding-top: 15px;
-            border-top: 1px solid #333;
-            color: #666;
-            font-size: 0.7em;
-            text-align: center;
-        }}
-        .warning-box {{
-            background: #ff3333;
-            color: #fff;
-            padding: 12px 20px;
-            border-radius: 8px;
-            margin: 15px 0;
-            font-weight: bold;
-        }}
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ProAV Shoko &mdash; USB Analysis</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif;background:#0d1117;color:#e6edf3;padding:24px;line-height:1.5;font-size:14px}}
+.wrap{{max-width:960px;margin:0 auto}}
+h1{{font-size:1.5rem;font-weight:600;color:#f0f6fc;border-bottom:1px solid #21262d;padding-bottom:10px;margin-bottom:4px}}
+.sub{{color:#8b949e;font-size:0.8rem;margin-bottom:20px}}
+h2{{color:#f0f6fc;font-size:1.1rem;font-weight:600;margin:24px 0 12px 0;padding-bottom:6px;border-bottom:1px solid #21262d}}
+
+.tags{{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:16px}}
+.tag{{background:#161b22;border:1px solid #30363d;padding:2px 10px;border-radius:4px;font-size:0.7rem;color:#8b949e}}
+.tag-apple{{background:#3d2e1f;border-color:#ff8800;color:#ffaa00;font-weight:500}}
+
+.summary{{display:flex;gap:8px;margin:16px 0}}
+.sum-item{{flex:1;min-width:80px;background:#161b22;border:1px solid #21262d;padding:12px;text-align:center;border-radius:6px}}
+.sum-val{{font-size:1.4rem;font-weight:700;color:#58a6ff}}
+.sum-lbl{{color:#8b949e;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.4px}}
+
+.card{{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:16px;margin:12px 0}}
+
+/* Stability table */
+.s-arch{{margin-bottom:10px}}
+.s-arch-name{{color:#8b949e;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;font-weight:600}}
+.s-table{{width:100%;border-collapse:collapse;font-size:0.8rem}}
+.s-table td{{padding:4px 8px;border-bottom:1px solid #21262d}}
+.s-name{{width:40%}}
+.s-status{{width:18%;font-size:0.65rem;font-weight:600}}
+.s-metric{{width:16%;text-align:right;color:#8b949e;font-variant-numeric:tabular-nums}}
+.s-sep{{color:#30363d;margin:0 2px}}
+.s-stable td.s-status{{color:#00cc66}}
+.s-warn td.s-status{{color:#ffaa00}}
+.s-fail td.s-status{{color:#ff3333}}
+.s-table tr:last-child td{{border-bottom:none}}
+.s-warnings{{margin-top:8px;padding:8px 12px;background:#1a0a0a;border:1px solid #331111;border-radius:4px}}
+.w-item{{color:#ff7777;font-size:0.75rem;margin:2px 0}}
+
+/* Mermaid */
+.mermaid-box{{background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:12px;overflow-x:auto}}
+
+/* Displays */
+.disp-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}}
+.disp-item{{background:#0d1117;border:1px solid #21262d;padding:12px;text-align:center;border-radius:6px}}
+.disp-res{{font-size:1.2rem;font-weight:600;color:#58a6ff}}
+.disp-name{{color:#e6edf3;font-size:0.8rem}}
+
+.notes{{margin-top:16px;padding:12px;background:#0d1117;border:1px solid #21262d;border-radius:6px}}
+.note{{color:#8b949e;font-size:0.7rem;margin:3px 0}}
+.note-p{{color:#e6edf3;font-weight:500}}
+
+.footer{{margin-top:24px;padding-top:12px;border-top:1px solid #21262d;color:#484f58;font-size:0.65rem;text-align:center}}
+.muted{{color:#8b949e;font-size:0.8rem}}
+
+@media (max-width:600px){{.summary{{flex-wrap:wrap}},.s-table,.s-table tbody,.s-table tr,.s-table td{{display:block;width:100%}}.s-table td{{border:none;padding:2px 8px}}.s-table tr{{border-bottom:1px solid #21262d;padding:4px 0}}}}
+</style>
 </head>
 <body>
-    <div class="container">
-        <h1>ProAV Shoko</h1>
-        <div class="subtitle">USB analysis report - {timestamp}</div>
+<div class="wrap">
+<h1>ProAV Shoko</h1>
+<div class="sub">USB Analysis &middot; {ts}</div>
 
-        <div class="platform-info">
-            <span class="platform-tag">{platform_info['os']} {platform_info['version']}</span>
-            <span class="platform-tag">{platform_info['architecture']}</span>
-            {'''<span class="platform-tag apple-silicon">Apple Silicon</span>''' if platform_info.get('is_apple_silicon', False) else ''}
-        </div>
+<div class="tags">
+<span class="tag">{platform_info['os']} {platform_info['version']}</span>
+<span class="tag">{platform_info['architecture']}</span>
+{apple_tag}
+</div>
 
-        <h2>Stability Assessment</h2>
-        <div class="card">
-            <p style="margin-bottom:10px;">
-                <strong>Max hops in chain:</strong> {hops_data['max_hops']} &bull;
-                <strong>Tiers:</strong> {hops_data['max_tiers']}
-            </p>
-            {stability_html}
-        </div>
+<div class="summary">
+<div class="sum-item"><div class="sum-val">{len(usb_tree)}</div><div class="sum-lbl">Devices</div></div>
+<div class="sum-item"><div class="sum-val">{hops_data['max_hops']}</div><div class="sum-lbl">Max Hops</div></div>
+<div class="sum-item"><div class="sum-val">{hops_data['max_tiers']}</div><div class="sum-lbl">Tiers</div></div>
+<div class="sum-item"><div class="sum-val">{hub_count}</div><div class="sum-lbl">Hubs</div></div>
+<div class="sum-item"><div class="sum-val">{len(displays)}</div><div class="sum-lbl">Displays</div></div>
+</div>
 
-        <div class="stats">
-            <div class="stat-item">
-                <div class="stat-value">{len(usb_tree)}</div>
-                <div class="stat-label">USB devices (root)</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value">{hops_data['max_hops']}</div>
-                <div class="stat-label">Max hops</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value">{hops_data['max_tiers']}</div>
-                <div class="stat-label">Tiers</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value">{len(displays)}</div>
-                <div class="stat-label">Connected displays</div>
-            </div>
-        </div>
+<h2>Stability Assessment</h2>
+<div class="card">{stability_html}</div>
 
-        <h2>USB Tree</h2>
-        <div class="tree">{usb_html}</div>
+<h2>USB Tree</h2>
+<div class="card"><div class="mermaid-box"><pre class="mermaid">{mermaid_tree}</pre></div></div>
 
-        <h2>Connected Displays</h2>
-        <div class="display-grid">{display_html}</div>
+<h2>Connected Displays</h2>
+<div class="card">{displays_html}</div>
 
-        {notes_html}
+{notes_html}
 
-        <div class="footer">
-            Generated by ProAV Shoko v1.0.0 &bull; {timestamp}
-            <br>
-            <span style="color:#444;">hop_limits.csv from src/assets/</span>
-        </div>
-    </div>
+<div class="footer">ProAV Shoko v1.0.0 &middot; {ts} &middot; hop_limits.csv from src/assets/</div>
+</div>
+<script>
+mermaid.initialize({{
+    startOnLoad:true,
+    theme:'dark',
+    themeVariables:{{
+        primaryColor:'#161b22', primaryTextColor:'#e6edf3',
+        primaryBorderColor:'#30363d', lineColor:'#484f58',
+        secondaryColor:'#161b22', tertiaryColor:'#0d1117',
+        background:'#0d1117', mainBkg:'#0d1117',
+        secondBkg:'#161b22', tertiaryBkg:'#21262d'
+    }},
+    flowchart:{{useMaxWidth:true,htmlLabels:true,curve:'basis'}}
+}});
+</script>
 </body>
-</html>
-        """
-
-    def _render_tree(self, tree: List[Dict], level: int = 0) -> str:
-        """Recursively renders the USB tree as HTML."""
-        if not tree:
-            return "<p>No USB devices found.</p>"
-
-        html = "<ul>"
-        for node in tree:
-            is_hub = node.get('is_hub', False)
-            cls = "hub" if is_hub else "device"
-            devpath = node.get('devpath', '')
-            hops = devpath.count('/') if devpath else 0
-
-            html += f"""
-            <li>
-                <span class="node-label">
-                    <span class="{cls}">{node.get('model', node.get('name', 'Unknown'))}</span>
-                    <span class="hops-badge">hops: {hops}</span>
-                    {'''<span style="color:#ffaa00;font-size:0.8em;"> [HUB]</span>''' if is_hub else ''}
-                </span>
-            """
-
-            if node.get('children'):
-                html += self._render_tree(node['children'], level + 1)
-
-            html += "</li>"
-
-        html += "</ul>"
-        return html
-
-    def _render_displays(self, displays: List[Dict[str, Any]]) -> str:
-        """Renders display information as HTML."""
-        if not displays:
-            return "<p>No displays found.</p>"
-
-        html = ""
-        for display in displays:
-            primary_mark = " (Primary)" if display.get('is_primary', False) else ""
-            html += f"""
-            <div class="display-item">
-                <div class="resolution">{display['resolution']}</div>
-                <div>{display['name']}{primary_mark}</div>
-                <div style="color:#888;font-size:0.8em;">{display.get('width', 0)} x {display.get('height', 0)} px</div>
-            </div>
-            """
-        return html
+</html>"""
 
     def generate_pdf_report(self, html_path: str, custom_path: Optional[str] = None) -> Optional[str]:
-        """Generates a PDF report from HTML."""
         if HTML is None:
-            print("[!] weasyprint is not installed, skipping PDF generation.")
             return None
-
         try:
-            if custom_path:
-                pdf_filename = Path(custom_path)
-            else:
-                pdf_filename = Path(html_path).with_suffix('.pdf')
-
-            pdf_filename.parent.mkdir(parents=True, exist_ok=True)
-
-            HTML(filename=html_path).write_pdf(str(pdf_filename))
-            return str(pdf_filename)
-
-        except Exception as e:
-            print(f"[!] Could not generate PDF: {e}")
+            pdf_path = Path(custom_path) if custom_path else Path(html_path).with_suffix('.pdf')
+            pdf_path.parent.mkdir(parents=True, exist_ok=True)
+            HTML(filename=html_path).write_pdf(str(pdf_path))
+            return str(pdf_path)
+        except Exception:
             return None
 
     def open_report(self, file_path: str) -> None:
-        """Opens the report in the default application."""
         try:
             abs_path = os.path.abspath(file_path)
-
             if sys.platform == 'darwin':
                 subprocess.run(['open', abs_path], check=False)
             elif sys.platform == 'win32':
                 os.startfile(abs_path)
             else:
                 webbrowser.open(f'file://{abs_path}')
-
-            print(f"[+] Opened: {abs_path}")
-
-        except Exception as e:
-            print(f"[!] Could not open file: {e}")
+        except Exception:
+            pass
