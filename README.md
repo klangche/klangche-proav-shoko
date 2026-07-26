@@ -3,7 +3,7 @@
 **ProAV Shoko** - A platform-independent analysis tool for AV environments.
 Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD environments.
 
-[![Build Status](https://github.com/klangche/proav-shoko/workflows/build/badge.svg)](https://github.com/klangche/proav-shoko/actions)
+
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/klangche/proav-shoko/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20PowerShell-lightgrey)](https://github.com/klangche/proav-shoko)
