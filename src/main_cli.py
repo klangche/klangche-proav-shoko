@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """
-ProAV Shoko - CLI mode (original PowerShell port)
+ProAV Shoko - CLI mode with logging, port selection, and report format options
 """
 
 import sys
+import threading
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Ensure UTF-8 output for Unicode box-drawing characters
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 
 from src.usb_analyzer import USBAnalyzer
 from src.display_analyzer import DisplayAnalyzer
@@ -14,40 +20,176 @@ from src.report_generator import ReportGenerator
 from src.platform_utils import PlatformUtils
 
 
+class LogManager:
+    """Manages logging with ability to stop and generate report."""
+    
+    def __init__(self):
+        self.logs = []
+        self.lock = threading.Lock()
+        self.stop_event = threading.Event()
+        self.monitor_thread = None
+        self.print_callback = None  # Callback to print logs in real-time
+        # Track device reconnections for stability assessment
+        self.device_events = {}  # device_name -> {'connects': 0, 'disconnects': 0, 'last_action': None}
+        self.unstable_devices = set()  # Devices that reconnected
+    
+    def set_print_callback(self, callback):
+        """Set callback for real-time log printing."""
+        self.print_callback = callback
+    
+    def log(self, message: str):
+        with self.lock:
+            log_entry = f"[{time.strftime('%H:%M:%S')}] {message}"
+            self.logs.append(log_entry)
+            # Print in real-time if callback is set
+            if self.print_callback:
+                self.print_callback(log_entry)
+            # Track device reconnections
+            self._track_device_event(message)
+    
+    def _track_device_event(self, message: str):
+        """Track device connect/disconnect events to detect reconnections."""
+        import re
+        # Match CONNECTED: or DISCONNECTED: messages
+        match = re.match(r'\[.*?\] (CONNECTED|DISCONNECTED): (.+)', message)
+        if match:
+            action, device = match.groups()
+            if device not in self.device_events:
+                self.device_events[device] = {'connects': 0, 'disconnects': 0, 'last_action': None}
+            if action == 'CONNECTED':
+                self.device_events[device]['connects'] += 1
+                # If this device was disconnected before, it's a reconnection
+                if self.device_events[device]['last_action'] == 'DISCONNECTED':
+                    self.unstable_devices.add(device)
+            elif action == 'DISCONNECTED':
+                self.device_events[device]['disconnects'] += 1
+            self.device_events[device]['last_action'] = action
+    
+    def get_unstable_devices(self) -> set:
+        """Get set of devices that reconnected during monitoring."""
+        with self.lock:
+            return self.unstable_devices.copy()
+    
+    def get_logs(self) -> list:
+        with self.lock:
+            return self.logs.copy()
+    
+    def start_monitoring(self, usb_analyzer):
+        """Start background USB monitoring."""
+        def monitor():
+            try:
+                usb_analyzer.start_live_monitoring(
+                    on_connect=lambda dev_id, info: self.log(f"CONNECTED: {info.get('ID_MODEL', dev_id)}"),
+                    on_disconnect=lambda dev_id, info: self.log(f"DISCONNECTED: {info.get('ID_MODEL', dev_id)}"),
+                    check_every_seconds=0.1
+                )
+                while not self.stop_event.is_set():
+                    time.sleep(0.1)
+            except Exception as e:
+                self.log(f"Monitor error: {e}")
+        
+        self.monitor_thread = threading.Thread(target=monitor, daemon=True)
+        self.monitor_thread.start()
+        self.log("Monitoring started...")
+    
+    def stop_monitoring(self, usb_analyzer):
+        """Stop background USB monitoring."""
+        self.stop_event.set()
+        try:
+            usb_analyzer.stop_live_monitoring()
+        except:
+            pass
+        self.log("Monitoring stopped.")
+
+
 def _print_header():
-    """Print professional header with clean formatting."""
     print("\n" + "=" * 70)
     print("KLANGCHE PROAV SHOKO - USB DETECTIVE")
     print("=" * 70 + "\n")
 
+
 def _print_separator():
-    """Print section separator."""
     print("-" * 70)
 
+
 def _print_section_header(title):
-    """Print section header with proper formatting."""
     print(f"\n{title}")
     print("-" * 70)
 
-def _print_tree(usb_tree, depth=0, prefix=""):
-    """Render USB tree with proper hierarchy lines."""
-    for i, node in enumerate(usb_tree):
-        is_last = i == len(usb_tree) - 1
-        connector = "└── " if is_last else "├── "
-        node_name = node.get('model', node.get('name', 'Unknown'))
-        hops = node.get('hops', 0)
-        is_hub = node.get('is_hub', False)
-        hub_marker = " [HUB]" if is_hub else ""
 
-        print(f"{prefix}{connector}{node_name}{hub_marker} (hops: {hops})")
+def _print_tree(nodes, prefix="", _show_internal=False, _parent_is_internal=False):
+    for i, node in enumerate(nodes):
+        is_last = i == len(nodes) - 1
+        connector = "└── " if is_last else "├── "
+        model = node.get('model', node.get('name', 'Unknown'))
+
+        badges = []
+        if node.get('is_hub'):
+            badges.append('HUB')
+        if node.get('is_display'):
+            badges.append('DISPLAY')
+        if node.get('is_internal') and _show_internal and not _parent_is_internal:
+            badges.insert(0, 'INTERNAL')
+
+        badge_str = ""
+        if badges:
+            badge_str = "[" + "][".join(badges) + "] "
+
+        port = node.get('port', 0)
+        port_info_str = f" [port {port}]" if port else ""
+
+        print(f"{prefix}{connector}{badge_str}{model}{port_info_str}")
 
         if node.get('children'):
             child_prefix = prefix + ("    " if is_last else "│   ")
-            _print_tree(node['children'], depth + 1, child_prefix)
+            new_parent_int = _parent_is_internal or node.get('is_internal', False)
+            _print_tree(node['children'], child_prefix, _show_internal, new_parent_int)
+
+
+def _print_port_tree(port_node):
+    """Print tree for a single port (children of the port node)."""
+    children = port_node.get('children', [])
+    if children:
+        _print_tree(children, "    ")
+
+
+def _print_stability_port(port_info, stability_data):
+    """Print stability verdicts for a single port."""
+    for v in stability_data:
+        status_char = '+' if v['color'] == 'green' else ('~' if v['color'] == 'orange' else '!')
+        print(
+            f"    {status_char} {v['name']:<20s} "
+            f"{v['status']:<9s} "
+            f"hops {v['current_hops']}/{v['max_hops']}  "
+            f"tiers {v['current_tiers']}/{v['max_tiers']}"
+        )
+
+
+def _prompt_report_format() -> str:
+    """Prompt user for report format: [Enter]HTML / [P]DF / [N]o report."""
+    while True:
+        choice = input("\nReport: [Enter]HTML / [P]DF / [N]o report: ").strip().upper()
+        if choice in ('', 'H', 'HTML'):
+            return 'html'
+        elif choice in ('P', 'PDF'):
+            return 'pdf'
+        elif choice in ('N', 'NO', 'NONE'):
+            return 'none'
+        print("  Please press Enter for HTML, P for PDF, or N for no report")
+
+
+def _prompt_monitor() -> bool:
+    """Ask if user wants to start live monitoring."""
+    while True:
+        choice = input("\nStart live USB monitoring? [Y/n]: ").strip().lower()
+        if choice in ('', 'y', 'yes'):
+            return True
+        elif choice in ('n', 'no'):
+            return False
+        print("  Please enter Y or N")
 
 
 def main(csv_path=None):
-    """Main function for CLI mode."""
     _print_header()
 
     # 1. Platform information
@@ -58,7 +200,7 @@ def main(csv_path=None):
         print("Apple Silicon: Yes")
     _print_separator()
 
-    # 2. USB analysis (uses built-in hop_limits.csv from src/assets/)
+    # 2. USB analysis
     usb_analyzer = USBAnalyzer(csv_path) if csv_path else USBAnalyzer()
     _print_separator()
 
@@ -66,62 +208,187 @@ def main(csv_path=None):
     usb_tree = usb_analyzer.build_tree()
     hops_data = usb_analyzer.calculate_hops_and_tiers(usb_tree)
 
-    # 3. Stability assessment for all platforms
-    stability = usb_analyzer.assess_stability(hops_data)
+    # 3. Stability
+    stability = usb_analyzer.assess_stability(hops_data, usb_tree)
 
     # 4. Display information
     print("\nScanning displays...")
     display_analyzer = DisplayAnalyzer()
     displays = display_analyzer.get_display_info()
 
-    # 5. Show USB tree
-    _print_section_header("USB Tree Structure")
+    # 5. Overall stability + Full tree + Per-port sections
+    overall = stability.get('overall_worst', 'STABLE')
+    mh = stability.get('max_hops', 0)
+    mt = stability.get('max_tiers', 0)
+    print(f"Overall: {overall} ({mh} hops, {mt} tiers)")
+    print()
+
+    # Save original root children for per-port matching
+    root_orig = usb_tree[0] if usb_tree else {}
+    orig_children = list(root_orig.get('children', []))
+
+    print("  Full USB & Display Tree")
     if usb_tree:
-        _print_tree(usb_tree)
+        root_node = usb_tree[0]
+
+        # Add displays directly into tree (not under a "Displays" parent)
+        if displays:
+            for d in displays:
+                prim = " (Primary)" if d.get('is_primary', False) else ""
+                int_disp = d.get('is_internal', False)
+                root_node.setdefault('children', []).append({
+                    'model': f"{d['resolution']}  {d['name']}{prim}",
+                    'name': d['name'], 'children': [], 'hops': 1,
+                    'is_hub': False, 'is_internal': int_disp, 'is_display': True, 'port': 0
+                })
+
+        _print_tree(usb_tree, "  ", _show_internal=True)
     else:
         print("  No USB devices found.")
+    print()
 
-    # 6. Hops analysis
-    _print_section_header("Hops Analysis")
-    print(f"Maximum Hops: {hops_data['max_hops']}")
-    print(f"Total Tiers: {hops_data['max_tiers']}")
-    print(f"Number of Hubs: {len([d for d in usb_tree if d.get('is_hub', False)])}")
+    print("  Overall rating")
+    for v in stability.get('verdicts', []):
+        sc = '+' if v['color'] == 'green' else ('~' if v['color'] == 'orange' else '!')
+        print(
+            f"    {sc} {v['name']:<20s} "
+            f"{v['status']:<9s} "
+            f"hops {v['current_hops']}/{v['max_hops']}  "
+            f"tiers {v['current_tiers']}/{v['max_tiers']}"
+        )
+    print()
+    print("=" * 31 + "PER PORT" + "=" * 31)
+    print()
 
-    # 7. Stability assessment - ALL platforms
-    _print_section_header("Stability Verdict")
-    print(usb_analyzer.get_stability_summary(stability))
+    ports_data = stability.get('ports', [])
 
-    # 8. Display information
-    _print_section_header("Display Information")
-    if displays:
-        for display in displays:
-            primary = " (Primary)" if display.get('is_primary', False) else ""
-            print(f"  {display['resolution']}  {display['name']}{primary}")
-    else:
-        print("  No displays found.")
+    def _print_port_child(child, idx):
+        port_info = next((p for p in ports_data if p.get('id') == idx + 1), None)
+        label = port_info['label'] if port_info else child.get('model', 'Port')
+        dc = len(port_info['devices']) if port_info else 0
+        ph = port_info['max_hops'] if port_info else 0
+        pt = port_info['max_tiers'] if port_info else 0
+        is_int = child.get('is_internal', False)
+        int_pre = "[INTERNAL] " if is_int else ""
+        print(f"  {int_pre}{label} ({dc} devices, {ph} hops, {pt} tiers)")
+        _print_port_tree(child)
+        if is_int:
+            print("    (internal)")
+        elif port_info:
+            _print_stability_port(port_info, port_info['verdicts'])
 
-    # 9. Generate reports
-    _print_section_header("Report Generation")
+    sep = "  " + "- " * 35
+
+    def print_section(header, is_internal_filter):
+        print("-" * 31 + header + "-" * 31)
+        first = True
+        for idx, child in enumerate(orig_children):
+            if child.get('is_display'):
+                continue
+            if is_internal_filter(child) != True:
+                continue
+            if not first:
+                print()
+            _print_port_child(child, idx)
+            print()
+            print(sep)
+            first = False
+
+    print_section("EXTERNAL", lambda c: not c.get('is_internal', False))
+    print_section("INTERNAL", lambda c: c.get('is_internal', False))
+
+    # Live monitoring
+    log_manager = LogManager()
+    monitoring_logs = []
+    unstable_devices = set()  # Initialize to empty set
+    
+    if _prompt_monitor():
+        # Set up real-time log printing
+        def print_log_entry(entry):
+            print(entry)
+        log_manager.set_print_callback(print_log_entry)
+        
+        log_manager.start_monitoring(usb_analyzer)
+        
+        print("\n" + "=" * 70)
+        print("LIVE MONITORING - Press Enter to stop and generate report")
+        print("=" * 70)
+        print("Logs appear in real-time below:")
+        print()
+        
+        # Wait for Enter key
+        input()
+        
+        log_manager.stop_monitoring(usb_analyzer)
+        
+        # Clear the callback to prevent double printing
+        log_manager.set_print_callback(None)
+        
+        monitoring_logs = log_manager.get_logs()
+        unstable_devices = log_manager.get_unstable_devices()
+        
+        print("\n" + "=" * 70)
+        print("MONITORING STOPPED - Logs captured")
+        if unstable_devices:
+            print("UNSTABLE DEVICES DETECTED (reconnected during monitoring):")
+            for dev in sorted(unstable_devices):
+                print(f"  ! {dev}")
+        print("=" * 70)
+        print()
+
+    # 6. Report generation - ask for format (always print all ports)
+    format_type = _prompt_report_format()
+    
+    if format_type == 'none':
+        _print_separator()
+        print("Done!")
+        print("=" * 70)
+        return
+    
+    # Always print all ports - no selection needed
+    selected_ports = None  # None means all ports
+    
+    print("\n  Generating report...")
     report_gen = ReportGenerator()
 
-    html_path = report_gen.generate_html_report(
-        usb_tree,
-        hops_data,
-        stability,
-        displays,
-        platform_info,
-        platform_notes=usb_analyzer.get_platform_notes()
-    )
-    print(f"  HTML Report: {html_path}")
-
-    pdf_path = report_gen.generate_pdf_report(html_path)
-    if pdf_path:
-        print(f"  PDF Report:  {pdf_path}")
-
-    _print_section_header("Opening Reports")
-    report_gen.open_report(html_path)
-    if pdf_path:
-        report_gen.open_report(pdf_path)
+    if format_type == 'html':
+        html_path = report_gen.generate_html_report(
+            usb_tree,
+            hops_data,
+            stability,
+            displays,
+            platform_info,
+            platform_notes=usb_analyzer.get_platform_notes(),
+            selected_ports=selected_ports,
+            monitoring_logs=monitoring_logs,
+            unstable_devices=unstable_devices
+        )
+        print(f"  HTML Report: {html_path}")
+        report_gen.open_report(html_path)
+    else:
+        # For PDF, generate HTML first then convert
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as tmp:
+            tmp_path = tmp.name
+        html_path = report_gen.generate_html_report(
+            usb_tree,
+            hops_data,
+            stability,
+            displays,
+            platform_info,
+            platform_notes=usb_analyzer.get_platform_notes(),
+            selected_ports=selected_ports,
+            monitoring_logs=monitoring_logs,
+            unstable_devices=unstable_devices,
+            custom_path=tmp_path
+        )
+        pdf_path = report_gen.generate_pdf_report(html_path)
+        if pdf_path:
+            print(f"  PDF Report:  {pdf_path}")
+            report_gen.open_report(pdf_path)
+        else:
+            print("  PDF generation failed (weasyprint not available). HTML saved instead.")
+            report_gen.open_report(html_path)
 
     _print_separator()
     print("Done!")
@@ -136,4 +403,6 @@ if __name__ == "__main__":
         sys.exit(0)
     except Exception as e:
         print(f"\nAn error occurred: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)

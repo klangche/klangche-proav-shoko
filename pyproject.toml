@@ -1,7 +1,33 @@
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+select = ["E", "F", "I", "W", "UP", "B", "C4", "ARG", "T20", "PT", "PTH", "SIM", "TRY", "PL", "RUF", "NPY"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["*/__pycache__/*", "*/tests/*"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "proav-shoko"
 version = "1.0.0"
-description = "USB-analysverktyg för AV-miljöer - plattformsoberoende med GUI"
+description = "USB analysis tool for AV environments"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -12,18 +38,3 @@ dependencies = [
 
 [project.scripts]
 proav-shoko = "src.main:main"
-
-[tool.uvbox.package]
-name = "proav-shoko"
-script = "proav-shoko"
-
-[tool.uvbox.package.version]
-static = "1.0.0"
-auto-update = true
-
-[tool.hatch.build.targets.wheel]
-packages = ["src"]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"

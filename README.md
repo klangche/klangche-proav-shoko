@@ -15,7 +15,7 @@ Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD envir
 - [Overview](#overview)
 - [Why ProAV Shoko?](#why-proav-shoko)
 - [Features](#features)
-- [Installation](#installation)
+- [4 Ways to Run](#4-ways-to-run)
 - [Usage](#usage)
 - [Tech Stack](#tech-stack)
 - [Building From Source](#building-from-source)
@@ -43,7 +43,7 @@ ProAV Shoko is a **platform-independent** analysis tool that:
 In modern meeting rooms we often see:
 
 - USB-C docks (Unisynk, HP, Lenovo, CalDigit, Logitech, TiGHT, Hyper, Targus...)
-- Multiple hubs and or active cables chained together adding tiers and hops.
+- Multiple hubs and/or active cables chained together adding tiers and hops.
 - Videobars, speakerphones, touch panels, wireless presentation dongles, external drives etc.
 - Users' own iPads/iPhones/Android/other devices
 
@@ -69,38 +69,44 @@ In modern meeting rooms we often see:
 
 ---
 
-## Installation
+## 4 Ways to Run
 
-### For Users (executable file)
-
-Download the latest version for your operating system from [Releases](https://github.com/klangche/proav-shoko/releases):
-
-| Platform | File | Size |
-|----------|------|------|
-| Windows | `proav-shoko-windows.exe` | ~15 MB |
-| macOS (Intel) | `proav-shoko-macos-intel` | ~18 MB |
-| macOS (Apple Silicon) | `proav-shoko-macos-arm64` | ~18 MB |
-| Linux | `proav-shoko-linux` | ~15 MB |
-
-```bash
-# Example: run directly on macOS
-chmod +x proav-shoko-macos-arm64
-./proav-shoko-macos-arm64
+### 1. Windows Executable (`.exe`)
+```powershell
+# Download from Releases page
+proav-shoko-windows.exe --cli
+# Or run GUI
+proav-shoko-windows.exe
 ```
 
-### PowerShell Launcher (Always From GitHub)
+### 2. macOS Application (`.app`)
+```bash
+# Download from Releases page
+# Intel Mac:
+open proav-shoko-macos-intel.app
 
-If you're on Windows and prefer the traditional PowerShell experience, you can run ProAV Shoko using the PowerShell script that downloads the latest version from GitHub. **This script ALWAYS downloads from GitHub - no local files are ever used.**
+# Apple Silicon Mac:
+open proav-shoko-macos-apple-silicon.app
 
-#### Install & Run:
+# Or CLI:
+./proav-shoko-macos-arm64 --cli
+```
+
+### 3. Linux Executable
+```bash
+# Download from Releases page
+chmod +x proav-shoko-linux
+./proav-shoko-linux --cli
+```
+
+### 4. PowerShell One-Liner (Always from GitHub)
 ```powershell
-# Download and run the latest version from GitHub
+# Download and run latest version from GitHub
 irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1 | iex
 
 # Run with verbose output
 .\proav-shoko.ps1 -Verbose
 ```
-
 **Features:**
 - Downloads the latest version automatically from GitHub
 - Runs with or without admin rights
@@ -108,9 +114,145 @@ irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-s
 - Full logging and error handling
 - Always uses the most current version from the repository
 
-**Why use PowerShell:**
-- Traditional Windows automation approach
-- No need to manually download executables
-- Automatic updates when you run
-- Always uses the latest feature set and fixes
-- No local file dependencies
+### 5. Python Script (Direct)
+```bash
+# From source
+git clone https://github.com/klangche/klangche-proav-shoko
+cd klangche-proav-shoko
+pip install -e .
+python run.py --cli
+# Or GUI:
+python run.py
+```
+
+---
+
+## Usage
+
+### CLI Mode
+```bash
+proav-shoko --cli
+```
+
+**Output includes:**
+1. Platform info (OS, architecture, admin status)
+2. Full USB tree with hops/tiers
+3. Overall stability rating
+4. Per-port stability (EXTERNAL / INTERNAL)
+5. Connected displays with resolution
+6. **Interactive monitoring** - press Enter to stop, then:
+   - Choose report format: `[Enter]HTML / [P]DF / [N]o report`
+   - Report auto-opens in browser/PDF viewer
+
+### GUI Mode
+```bash
+proav-shoko
+# Or
+python run.py
+```
+
+**Features:**
+- Live USB tree with stability
+- Real-time connect/disconnect log
+- Report generation with format selection
+- Export CSV limits
+
+### Report Output
+Reports include:
+- Full USB tree with Mermaid diagrams
+- Per-port stability assessment
+- Monitoring log (if monitoring was run)
+- ⚠ Unstable devices detected during monitoring
+- Platform-specific stability limits
+- Connected displays
+- Platform notes
+
+---
+
+## Tech Stack
+
+- **Python 3.10+** - Core language
+- **usbmonitor** - USB device monitoring
+- **screeninfo** - Display information
+- **weasyprint** - PDF generation
+- **tkinter** - GUI (built-in)
+- **PyInstaller** - Cross-platform builds
+- **Mermaid.js** - Diagrams in HTML reports
+- **PowerShell** - Windows launcher
+
+---
+
+## Building From Source
+
+### Prerequisites
+```bash
+# macOS
+brew install python cairo pango gdk-pixbuf libffi
+
+# Linux (Ubuntu/Debian)
+sudo apt-get install python3-dev libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev libffi-dev
+
+# Windows
+# Install Python from python.org
+# Install Visual C++ Build Tools
+```
+
+### Quick Build (Current Platform)
+```bash
+pip install -U pip pyinstaller
+pip install -e .
+python -m PyInstaller proav-shoko.spec
+```
+
+### Cross-Platform Build (via GitHub Actions)
+The repository includes `.github/workflows/build.yml` that builds for all platforms on push to main.
+
+### Output
+```
+dist/
+├── proav-shoki.exe              # Windows CLI
+├── ProAV Shoko.exe              # Windows GUI
+├── proav-shoki-macos-intel      # macOS Intel CLI
+├── ProAV Shoko.app              # macOS Intel GUI
+├── proav-shoki-macos-arm64      # macOS Apple Silicon CLI
+├── ProAV Shoko.app              # macOS Apple Silicon GUI
+└── proav-shoki-linux-x86_64     # Linux CLI
+```
+
+---
+
+## Project Structure
+
+```
+klangche-proav-shoko/
+├── .github/workflows/build.yml   # CI/CD builds
+├── src/
+│   ├── main.py                   # Entry point (GUI/CLI)
+│   ├── main_cli.py               # CLI logic
+│   ├── gui.py                    # Tkinter GUI
+│   ├── usb_analyzer.py           # USB tree, hops, stability
+│   ├── display_analyzer.py       # Display detection
+│   ├── report_generator.py       # HTML/PDF reports
+│   ├── platform_utils.py         # Platform detection
+│   └── assets/
+│       ├── report.css            # Report styling
+│       └── hop_limits.csv        # Platform stability limits
+├── run.py                        # Simple entry point
+├── proav-shoko.spec              # PyInstaller spec
+├── proav-shoko.ps1               # PowerShell launcher
+├── proav-shoko_powershell.ps1    # Full PS implementation
+├── build.py                      # Cross-platform build script
+├── pyproject.toml
+├── README.md
+└── LICENSE
+```
+
+---
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+*Built for the ProAV community by Klangche*

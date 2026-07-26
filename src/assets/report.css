@@ -1,0 +1,59 @@
+* { margin: 0; padding: 0; box-sizing: border-box }
+body { font-family: 'Cascadia Code', 'Consolas', 'Fira Code', 'Courier New', monospace; background: #0c0c10; color: #d4d4d4; padding: 24px; font-size: 13px; line-height: 1.5 }
+.wr { max-width: 960px; margin: 0 auto }
+h1 { font-size: 1.3rem; font-weight: 600; color: #569CD6; border-bottom: 1px solid #1a1a2e; padding-bottom: 10px; margin-bottom: 4px }
+.su { color: #808080; font-size: 0.75rem; margin-bottom: 20px }
+h2 { color: #569CD6; font-size: 1rem; font-weight: 600; margin: 24px 0 12px 0; padding-bottom: 6px; border-bottom: 1px solid #1a1a2e }
+.tgs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 16px }
+.tg { background: #0a0a12; border: 1px solid #1a1a2e; padding: 2px 10px; border-radius: 3px; font-size: 0.7rem; color: #808080 }
+.tg.ap { background: #1a0a00; border-color: #D7BA7D; color: #D7BA7D }
+.sm { display: flex; gap: 8px; margin: 16px 0 }
+.si { flex: 1; min-width: 80px; background: #0a0a12; border: 1px solid #1a1a2e; padding: 12px; text-align: center; border-radius: 3px }
+.sv { font-size: 1.3rem; font-weight: 700; color: #569CD6 }
+.sl { color: #808080; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.3px }
+.cd { background: #0a0a12; border: 1px solid #1a1a2e; border-radius: 3px; padding: 16px; margin: 12px 0 }
+.ov { color: #d4d4d4; font-size: 1rem; margin-bottom: 16px; font-weight: 600 }
+.ov.st { color: #6A9955 }
+.ov.al { color: #D7BA7D }
+.ov.un { color: #D16969 }
+.pr { margin-bottom: 14px; padding: 12px; background: #0c0c10; border: 1px solid #1a1a2e; border-radius: 3px }
+.ph { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px }
+.pn { color: #569CD6; font-size: 0.85rem; font-weight: 600 }
+.pm { color: #808080; font-size: 0.65rem }
+.tb { width: 100%; border-collapse: collapse; font-size: 0.75rem; margin-bottom: 8px }
+.tb td { padding: 3px 8px; border-bottom: 1px solid #1a1a2e }
+.hdr td { color: #808080; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.2px; border-bottom: 1px solid #2a2a3e }
+.nm { width: 40% }
+.st { width: 18%; font-size: 0.65rem; font-weight: 600 }
+.mt { width: 16%; text-align: right; color: #808080 }
+.sl { color: #2a2a3e; margin: 0 2px }
+.ok td.st { color: #6A9955 }
+.wa td.st { color: #D7BA7D }
+.bad td.st { color: #D16969 }
+.mb { background: #06060a; border: 1px solid #1a1a2e; border-radius: 3px; padding: 8px; overflow-x: auto }
+.ovd { margin-top: 4px }
+.ovs { color: #808080; font-size: 0.7rem; cursor: pointer }
+.ovs:hover { color: #d4d4d4 }
+.dg { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px }
+.di { background: #0c0c10; border: 1px solid #1a1a2e; padding: 10px; text-align: center; border-radius: 3px }
+.dr { font-size: 1rem; font-weight: 600; color: #569CD6 }
+.dn { color: #d4d4d4; font-size: 0.75rem }
+.nts { margin-top: 16px; padding: 10px; background: #0a0a12; border: 1px solid #1a1a2e; border-radius: 3px }
+.nt { color: #808080; font-size: 0.65rem; margin: 2px 0 }
+.np { color: #d4d4d4; font-weight: 500 }
+.ft { margin-top: 24px; padding-top: 12px; border-top: 1px solid #1a1a2e; color: #2a2a3e; font-size: 0.6rem; text-align: center }
+.mu { color: #808080; font-size: 0.75rem }
+.pre { white-space: pre-wrap; font-family: inherit; }
+.port-select { margin: 16px 0; padding: 16px; background: #0c0c10; border: 1px solid #1a1a2e; border-radius: 3px }
+.port-select label { display: block; margin: 8px 0; cursor: pointer; color: #d4d4d4 }
+.port-select input[type="checkbox"] { margin-right: 8px; accent-color: #569CD6 }
+.port-select .port-header { font-weight: 600; color: #569CD6; margin-bottom: 8px }
+.format-select { margin: 16px 0; padding: 16px; background: #0c0c10; border: 1px solid #1a1a2e; border-radius: 3px }
+.format-select label { display: block; margin: 8px 0; cursor: pointer; color: #d4d4d4 }
+.format-select input[type="radio"] { margin-right: 8px; accent-color: #569CD6 }
+.log-section { margin-top: 16px; padding: 12px; background: #0a0a12; border: 1px solid #1a1a2e; border-radius: 3px }
+.log-entry { margin: 4px 0; font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 0.75rem }
+.log-timestamp { color: #666666 }
+.log-connect { color: #00cc66 }
+.log-disconnect { color: #ff8800 }
+.log-info { color: #88ccff }

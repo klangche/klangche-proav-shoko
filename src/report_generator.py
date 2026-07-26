@@ -1,284 +1,351 @@
 """
-Report generator - creates professional HTML and PDF reports
+Report generator - creates HTML/PDF reports matching CLI output style
 """
 
 import os
 import webbrowser
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
-try:
-    from weasyprint import HTML
-except (ImportError, OSError):
-    HTML = None
-
 
 class ReportGenerator:
-    """Generates professional HTML and PDF reports."""
-
-    def __init__(self, output_dir: str = "reports"):
-        self.output_dir = Path(output_dir)
+    def __init__(self, output_dir: str = None):
+        if output_dir is None:
+            self.output_dir = Path(tempfile.gettempdir())
+        else:
+            self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.css_path = Path(__file__).parent / "assets" / "report.css"
 
-    def generate_html_report(
-        self,
-        usb_tree: List[Dict],
-        hops_data: Dict[str, Any],
-        stability: Dict[str, Any],
-        displays: List[Dict[str, Any]],
-        platform_info: Dict[str, Any],
-        platform_notes: Optional[List[Dict[str, str]]] = None,
-        custom_path: Optional[str] = None
-    ) -> str:
-        html_content = self._build_html_content(
-            usb_tree, hops_data, stability, displays, platform_info, platform_notes
-        )
-        if custom_path:
-            filename = Path(custom_path)
-        else:
-            filename = self.output_dir / f"proav-shoko_report_{self.timestamp}.html"
-        filename.parent.mkdir(parents=True, exist_ok=True)
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-        return str(filename)
+    def _load_css(self) -> str:
+        if self.css_path.exists():
+            with open(self.css_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        return ""
 
-    def _build_mermaid_tree(self, usb_tree: List[Dict]) -> str:
-        lines = ["graph TD"]
+    def _escape(self, text: str) -> str:
+        return (text
+                .replace('&', '&')
+                .replace('<', '<')
+                .replace('>', '>')
+                .replace('"', '"')
+                .replace("'", '''))
 
-        def add_node(node: Dict, parent_id: Optional[str] = None, depth: int = 0) -> str:
-            node_id = f"n{node.get('devpath', '').replace('/', '_').replace('-', '_').replace('.', '_')}"
-            if not node_id or node_id == "n":
-                node_id = f"n{id(node)}"
-            model = node.get('model', node.get('name', 'Unknown Device'))
-            is_hub = node.get('is_hub', False)
-            devpath = node.get('devpath', '')
-            hops = devpath.count('/') if devpath else 0
-            label = f"{model}{' [HUB]' if is_hub else ''} ({hops})"
-            shape = ":::hub" if is_hub else ":::device"
-            lines.append(f'    {node_id}["{label}"]{shape}')
-            if parent_id:
-                lines.append(f"    {parent_id} --> {node_id}")
-            if node.get('children'):
-                for child in node['children']:
-                    add_node(child, node_id, depth + 1)
-            return node_id
+    def _format_verdict(self, v):
+        status_char = '+' if v['color'] == 'green' else ('~' if v['color'] == 'orange' else '!')
+        return ("    {0} {1:<20} "
+                "{2:<9} "
+                "hops {3}/{4}  "
+                "tiers {5}/{6}").format(
+                    v['name'], v['status'],
+                    v['current_hops'], v['max_hops'],
+                    v['current_tiers'], v['max_tiers'])
 
-        for root in usb_tree:
-            add_node(root)
+    def _build_tree_html(self, nodes, prefix="", is_last_list=None):
+        if is_last_list is None:
+            is_last_list = [True] * len(nodes)
+        
+        lines = []
+        for i, node in enumerate(nodes):
+            is_last = is_last_list[i]
+            connector = "└── " if is_last else "├── "
+            
+            model = node.get('model', node.get('name', 'Unknown'))
+            
+            badges = []
+            if node.get('is_hub'):
+                badges.append('HUB')
+            if node.get('is_display'):
+                badges.append('DISPLAY')
+            if node.get('is_internal', False):
+                badges.insert(0, 'INTERNAL')
+            
+            badge_str = ""
+            if badges:
+                badge_str = "[" + "][".join(badges) + "] "
+            
+            port = node.get('port', 0)
+            port_str = " [port {0}]".format(port) if port else ""
+            
+            line = "{0}{1}{2}{3}{4}".format(prefix, connector, badge_str, model, port_str)
+            lines.append(self._escape(line))
+            
+            children = node.get('children', [])
+            if children:
+                child_prefix = prefix + ("    " if is_last else "│   ")
+                child_is_last = [j == len(children) - 1 for j in range(len(children))]
+                lines.extend(self._build_tree_html(children, child_prefix, child_is_last))
+        return lines
 
-        lines.append("    classDef hub fill:#1a1a2e,stroke:#ffaa00,stroke-width:2px,color:#ffaa00")
-        lines.append("    classDef device fill:#1a1a2e,stroke:#00d4ff,stroke-width:1px,color:#e0e0e0")
-        return "\n".join(lines)
+    def _build_port_tree_html(self, port_node):
+        children = port_node.get('children', [])
+        if not children:
+            return []
+        
+        lines = []
+        child_is_last = [j == len(port_node.get('children', [])) - 1 for j in range(len(port_node.get('children', [])))]
+        lines.extend(self._build_tree_html(port_node.get('children', []), "    ", child_is_last))
+        return lines
 
-    def _build_stability_html(self, stability_data: Dict[str, Any]) -> str:
-        parts = []
-        groups = stability_data.get('groups', {})
+    def _format_verdict(self, v):
+        status_char = '+' if v['color'] == 'green' else ('~' if v['color'] == 'orange' else '!')
+        return ("    {0} {1:<20} "
+                "{1:<9} "
+                "hops {2}/{3}  "
+                "tiers {4}/{5}").format(
+                    status_char,
+                    v['name'], v['status'],
+                    v['current_hops'], v['max_hops'],
+                    v['current_tiers'], v['max_tiers'])
 
-        for arch, verdicts in groups.items():
-            rows = []
-            for v in verdicts:
-                color = v.get('color', 'green')
-                status_class = "s-stable" if color == "green" else ("s-warn" if color == "orange" else "s-fail")
-                rows.append(
-                    f'<tr class="{status_class}">'
-                    f'<td class="s-name">{v["emoji"]} {v["name"]}</td>'
-                    f'<td class="s-status">{v["status"]}</td>'
-                    f'<td class="s-metric">{v["current_hops"]}<span class="s-sep">/</span>{v["max_hops"]}</td>'
-                    f'<td class="s-metric">{v["current_tiers"]}<span class="s-sep">/</span>{v["max_tiers"]}</td>'
-                    f'</tr>'
-                )
-            parts.append(
-                f'<div class="s-arch">'
-                f'<div class="s-arch-name">{arch}</div>'
-                f'<table class="s-table"><tbody>{"".join(rows)}</tbody></table>'
-                f'</div>'
-            )
+    def generate_html_report(self, usb_tree, hops_data, stability, displays, platform_info,
+                             platform_notes=None, custom_path=None, selected_ports=None,
+                             monitoring_logs=None, unstable_devices=None):
+        html = self._build_html(usb_tree, hops_data, stability, displays, platform_info,
+                                platform_notes, monitoring_logs, unstable_devices)
+        fn = Path(custom_path) if custom_path else self.output_dir / "proav-shoko_report_{0}.html".format(self.timestamp)
+        fn.parent.mkdir(parents=True, exist_ok=True)
+        with open(fn, 'w', encoding='utf-8') as f:
+            f.write(html)
+        return str(fn)
 
-        warnings = [v for v in stability_data.get('verdicts', []) if v.get('warning')]
-        if warnings:
-            warn_rows = []
-            for w in warnings:
-                warn_rows.append(f'<div class="w-item">[{w["name"]}] {w["warning"]} (hops: {w["current_hops"]})</div>')
-            parts.append(f'<div class="s-warnings">{"".join(warn_rows)}</div>')
-
-        return "".join(parts)
-
-    def _build_html_content(
-        self,
-        usb_tree: List[Dict],
-        hops_data: Dict[str, Any],
-        stability: Dict[str, Any],
-        displays: List[Dict[str, Any]],
-        platform_info: Dict[str, Any],
-        platform_notes: Optional[List[Dict[str, str]]] = None
-    ) -> str:
-        mermaid_tree = self._build_mermaid_tree(usb_tree)
-        stability_html = self._build_stability_html(stability)
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        hub_count = sum(1 for d in usb_tree if d.get('is_hub', False))
-
-        apple_tag = ""
-        if platform_info.get('is_apple_silicon'):
-            apple_tag = '<span class="tag tag-apple">Apple Silicon</span>'
-
-        displays_html = ""
+    def _build_html(self, usb_tree, hops_data, stability, displays, platform_info,
+                    platform_notes, monitoring_logs, unstable_devices):
+        
+        # Build tree
+        tree_lines = self._build_tree_html(usb_tree) if usb_tree else ["No USB devices found."]
+        tree_html = "<br>".join(tree_lines)
+        
+        # Overall rating
+        overall = stability.get('overall_worst', 'STABLE')
+        mh = stability.get('max_hops', 0)
+        mt = stability.get('max_tiers', 0)
+        overall_html = "Overall: {0} ({1} hops, {2} tiers)".format(overall, mh, mt)
+        overall_lines = []
+        for v in stability.get('verdicts', []):
+            overall_lines.append(self._format_verdict(v))
+        overall_html = "<br>".join([overall_html] + overall_lines)
+        
+        # Ports data
+        ports_data = stability.get('ports', [])
+        orig_children = usb_tree[0].get('children', []) if usb_tree else []
+        
+        # EXTERNAL section
+        ext_lines = ["-------------------------------EXTERNAL-------------------------------"]
+        for idx, child in enumerate(usb_tree[0].get('children', []) if usb_tree else []):
+            if child.get('is_display') or child.get('is_internal', False):
+                continue
+            port_info = next((p for p in stability.get('ports', []) if p.get('id') == idx + 1), None)
+            label = port_info['label'] if port_info else child.get('model', 'Port')
+            dc = len(port_info['devices']) if port_info else 0
+            ph = port_info['max_hops'] if port_info else 0
+            pt = port_info['max_tiers'] if port_info else 0
+            
+            ext_lines.append("  {0} ({1} devices, {2} hops, {4} tiers)".format(label, dc, ph, pt))
+            
+            for line in self._build_port_tree_html(usb_tree[0].get('children', [])[idx]):
+                ext_lines.append("    " + line)
+            
+            if port_info:
+                for v in port_info['verdicts']:
+                    ext_lines.append(self._format_verdict(v))
+            ext_lines.append("  " + "- " * 35)
+        
+        # INTERNAL section
+        int_lines = ["-------------------------------INTERNAL-------------------------------"]
+        for idx, child in enumerate(usb_tree[0].get('children', []) if usb_tree else []):
+            if child.get('is_display') or not child.get('is_internal', False):
+                continue
+            port_info = next((p for p in stability.get('ports', []) if p.get('id') == idx + 1), None)
+            label = port_info['label'] if port_info else child.get('model', 'Port')
+            dc = len(port_info['devices']) if port_info else 0
+            ph = port_info['max_hops'] if port_info else 0
+            pt = port_info['max_tiers'] if port_info else 0
+            
+            int_lines.append("  [INTERNAL] {0} ({1} devices, {2} hops, {4} tiers)".format(label, dc, ph, pt))
+            
+            for line in self._build_port_tree_html(usb_tree[0].get('children', [])[idx]):
+                int_lines.append("    " + line)
+            
+            int_lines.append("    (internal)")
+            int_lines.append("  " + "- " * 35)
+        
+        # Displays
+        disp_lines = []
         if displays:
-            items = []
             for d in displays:
-                prim = " &middot; Primary" if d.get('is_primary', False) else ""
-                items.append(
-                    f'<div class="disp-item">'
-                    f'<div class="disp-res">{d["resolution"]}</div>'
-                    f'<div class="disp-name">{d["name"]}{prim}</div>'
-                    f'</div>'
-                )
-            displays_html = f'<div class="disp-grid">{"".join(items)}</div>'
+                primary = " (Primary)" if d.get('is_primary', False) else ""
+                int_disp = "[INTERNAL] " if d.get('is_internal', False) else ""
+                disp_lines.append("  {0}[DISPLAY] {1}  {2}{3}".format(int_disp, d['resolution'], d['name'], primary))
         else:
-            displays_html = '<p class="muted">No displays detected.</p>'
-
+            disp_lines.append("  No displays found.")
+        
+        # Platform notes
         notes_html = ""
         if platform_notes:
-            ns = []
+            note_items = []
             for n in platform_notes:
                 p = n.get('platform', '').replace('_', ' ').title()
-                ns.append(
-                    f'<div class="note"><span class="note-p">{p}</span> '
-                    f'<span class="note-d">{n.get("description", "")}</span> &mdash; {n.get("note", "")}</div>'
-                )
-            notes_html = f'<div class="notes">{"".join(ns)}</div>'
-
-        return f"""<!DOCTYPE html><html lang="en">
+                note_items.append('<div class="note"><span class="np">{0}</span> {1} &mdash; {2}</div>'.format(p, n.get("description", ""), n.get("note", "")))
+            notes_html = '<div class="section"><div class="section-title">PLATFORM NOTES</div>{0}</div>'.format("".join(note_items))
+        
+        # Monitoring logs
+        monitoring_html = ""
+        if monitoring_logs:
+            log_entries = "<br>".join(self._escape(log) for log in monitoring_logs)
+            monitoring_html = '''
+<div class="section">
+    <div class="section-title">MONITORING LOG</div>
+    <div class="log-content">{0}</div>
+</div>'''.format(log_entries)
+        
+        # Unstable devices
+        unstable_html = ""
+        if unstable_devices:
+            unstable_entries = "<br>".join('[!] {0} - Reconnected during monitoring (UNSTABLE)'.format(self._escape(device)) for device in unstable_devices)
+            unstable_html = '''
+<div class="section unstable">
+    <div class="section-title">[!] UNSTABLE DEVICES DETECTED</div>
+    <div class="log-content">{0}</div>
+</div>'''.format(unstable_entries)
+        
+        css = self._load_css()
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ap_html = '<span class="tag apple">Apple Silicon</span>' if platform_info.get('is_apple_silicon') else ''
+        css = self._load_css()
+        
+        # Prepare pre-formatted HTML strings
+        ext_lines_html = "<br>".join(self._escape(line) for line in ext_lines)
+        int_lines_html = "<br>".join(self._escape(line) for line in int_lines)
+        disp_lines_html = "<br>".join(self._escape(line) for line in disp_lines)
+        tree_html = "<br>".join(self._escape(line) for line in self._build_tree_html(usb_tree)) if usb_tree else "No USB devices found."
+        
+        overall = stability.get('overall_worst', 'STABLE')
+        mh = stability.get('max_hops', 0)
+        mt = stability.get('max_tiers', 0)
+        overall_html = "Overall: {0} ({1} hops, {2} tiers)".format(overall, mh, mt)
+        overall_lines = []
+        for v in stability.get('verdicts', []):
+            overall_lines.append(self._format_verdict(v))
+        overall_html = "<br>".join([overall_html] + overall_lines)
+        
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ap_html = '<span class="tag apple">Apple Silicon</span>' if platform_info.get('is_apple_silicon') else ''
+        css = self._load_css()
+        
+        ext_lines_html = "<br>".join(self._escape(line) for line in ext_lines)
+        int_lines_html = "<br>".join(self._escape(line) for line in int_lines)
+        disp_lines_html = "<br>".join(self._escape(line) for line in disp_lines)
+        tree_html = "<br>".join(self._escape(line) for line in self._build_tree_html(usb_tree)) if usb_tree else "No USB devices found."
+        
+        overall = stability.get('overall_worst', 'STABLE')
+        mh = stability.get('max_hops', 0)
+        mt = stability.get('max_tiers', 0)
+        overall_html = "Overall: {0} ({1} hops, {2} tiers)".format(overall, mh, mt)
+        overall_lines = []
+        for v in stability.get('verdicts', []):
+            overall_lines.append(self._format_verdict(v))
+        overall_html = "<br>".join([overall_html] + overall_lines)
+        
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ap_html = '<span class="tag apple">Apple Silicon</span>' if platform_info.get('is_apple_silicon') else ''
+        css = self._load_css()
+        
+        return """<!DOCTYPE html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>ProAV Shoko &mdash; USB Analysis</title>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<title>ProAV Shoko - USB Analysis</title>
 <style>
-*{{margin:0;padding:0;box-sizing:border-box}}
-body{{font-family:'Segoe UI',-apple-system,BlinkMacSystemFont,sans-serif;background:#0d1117;color:#e6edf3;padding:24px;line-height:1.5;font-size:14px}}
-.wrap{{max-width:960px;margin:0 auto}}
-h1{{font-size:1.5rem;font-weight:600;color:#f0f6fc;border-bottom:1px solid #21262d;padding-bottom:10px;margin-bottom:4px}}
-.sub{{color:#8b949e;font-size:0.8rem;margin-bottom:20px}}
-h2{{color:#f0f6fc;font-size:1.1rem;font-weight:600;margin:24px 0 12px 0;padding-bottom:6px;border-bottom:1px solid #21262d}}
-
-.tags{{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:16px}}
-.tag{{background:#161b22;border:1px solid #30363d;padding:2px 10px;border-radius:4px;font-size:0.7rem;color:#8b949e}}
-.tag-apple{{background:#3d2e1f;border-color:#ff8800;color:#ffaa00;font-weight:500}}
-
-.summary{{display:flex;gap:8px;margin:16px 0}}
-.sum-item{{flex:1;min-width:80px;background:#161b22;border:1px solid #21262d;padding:12px;text-align:center;border-radius:6px}}
-.sum-val{{font-size:1.4rem;font-weight:700;color:#58a6ff}}
-.sum-lbl{{color:#8b949e;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.4px}}
-
-.card{{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:16px;margin:12px 0}}
-
-/* Stability table */
-.s-arch{{margin-bottom:10px}}
-.s-arch-name{{color:#8b949e;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;font-weight:600}}
-.s-table{{width:100%;border-collapse:collapse;font-size:0.8rem}}
-.s-table td{{padding:4px 8px;border-bottom:1px solid #21262d}}
-.s-name{{width:40%}}
-.s-status{{width:18%;font-size:0.65rem;font-weight:600}}
-.s-metric{{width:16%;text-align:right;color:#8b949e;font-variant-numeric:tabular-nums}}
-.s-sep{{color:#30363d;margin:0 2px}}
-.s-stable td.s-status{{color:#00cc66}}
-.s-warn td.s-status{{color:#ffaa00}}
-.s-fail td.s-status{{color:#ff3333}}
-.s-table tr:last-child td{{border-bottom:none}}
-.s-warnings{{margin-top:8px;padding:8px 12px;background:#1a0a0a;border:1px solid #331111;border-radius:4px}}
-.w-item{{color:#ff7777;font-size:0.75rem;margin:2px 0}}
-
-/* Mermaid */
-.mermaid-box{{background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:12px;overflow-x:auto}}
-
-/* Displays */
-.disp-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}}
-.disp-item{{background:#0d1117;border:1px solid #21262d;padding:12px;text-align:center;border-radius:6px}}
-.disp-res{{font-size:1.2rem;font-weight:600;color:#58a6ff}}
-.disp-name{{color:#e6edf3;font-size:0.8rem}}
-
-.notes{{margin-top:16px;padding:12px;background:#0d1117;border:1px solid #21262d;border-radius:6px}}
-.note{{color:#8b949e;font-size:0.7rem;margin:3px 0}}
-.note-p{{color:#e6edf3;font-weight:500}}
-
-.footer{{margin-top:24px;padding-top:12px;border-top:1px solid #21262d;color:#484f58;font-size:0.65rem;text-align:center}}
-.muted{{color:#8b949e;font-size:0.8rem}}
-
-@media (max-width:600px){{.summary{{flex-wrap:wrap}},.s-table,.s-table tbody,.s-table tr,.s-table td{{display:block;width:100%}}.s-table td{{border:none;padding:2px 8px}}.s-table tr{{border-bottom:1px solid #21262d;padding:4px 0}}}}
+{css}
+body {{ font-family: 'Cascadia Code', 'Consolas', 'Fira Code', 'Courier New', monospace; background:#0c0c10; color:#d4d4d4; padding:24px; font-size:13px; line-height:1.5 }}
+.wrapper {{ max-width: 960px; margin:0 auto; }}
+.header {{ color:#569CD6; font-size:1.3rem; font-weight:600; border-bottom:1px solid #1a1a2e; padding-bottom:10px; margin-bottom:4px }}
+.subtitle {{ color:#808080; font-size:0.75rem; margin-bottom:20px }}
+.tags {{ display:flex; flex-wrap:wrap; gap:4px; margin-bottom:16px }}
+.tag {{ background:#0a0a12; border:1px solid #1a1a2e; padding:2px 10px; border-radius:3px; font-size:0.7rem; color:#808080 }}
+.tag.apple {{ background:#1a0a00; border-color:#D7BA7D; color:#D7BA7D }}
+.stats {{ display:flex; gap:8px; margin:16px 0 }}
+.stat {{ flex:1; min-width:80px; background:#0a0a12; border:1px solid #1a1a2e; padding:12px; text-align:center; border-radius:3px }}
+.stat-value {{ font-size:1.3rem; font-weight:700; color:#569CD6 }}
+.stat-label {{ color:#808080; font-size:0.6rem; text-transform:uppercase; letter-spacing:0.3px }}
+.section {{ background:#0a0a12; border:1px solid #1a1a2e; border-radius:3px; padding:16px; margin:12px 0 }}
+.section-title {{ color:#569CD6; font-size:1rem; font-weight:600; margin:24px 0 12px 0; padding-bottom:6px; border-bottom:1px solid #1a1a2e }}
+.section.unstable {{ border-color:#D16969; }}
+.log-content {{ white-space:pre-wrap; font-family:inherit; font-size:0.75rem }}
+.note {{ color:#808080; font-size:0.65rem; margin:2px 0 }}
+.np {{ color:#d4d4d4; font-weight:500 }}
+.footer {{ margin-top:24px; padding-top:12px; border-top:1px solid #1a1a2e; color:#2a2a3e; font-size:0.6rem; text-align:center }}
+.pre {{ white-space:pre; font-family:inherit; }}
 </style>
 </head>
 <body>
-<div class="wrap">
-<h1>ProAV Shoko</h1>
-<div class="sub">USB Analysis &middot; {ts}</div>
-
+<div class="wrapper">
+<div class="header">ProAV Shoko</div>
+<div class="subtitle">USB Analysis &middot; {ts}</div>
 <div class="tags">
-<span class="tag">{platform_info['os']} {platform_info['version']}</span>
-<span class="tag">{platform_info['architecture']}</span>
-{apple_tag}
+<span class="tag">{platform_info[os]} {platform_info[version]}</span>
+<span class="tag">{platform_info[architecture]}</span>
+{ap_html}
+</div>
+<div class="stats">
+<div class="stat"><div class="stat-value">{mh}</div><div class="stat-label">Max Hops</div></div>
+<div class="stat"><div class="stat-value">{mt}</div><div class="stat-label">Tiers</div></div>
+<div class="stat"><div class="stat-value">{len_displays}</div><div class="stat-label">Displays</div></div>
 </div>
 
-<div class="summary">
-<div class="sum-item"><div class="sum-val">{len(usb_tree)}</div><div class="sum-lbl">Devices</div></div>
-<div class="sum-item"><div class="sum-val">{hops_data['max_hops']}</div><div class="sum-lbl">Max Hops</div></div>
-<div class="sum-item"><div class="sum-val">{hops_data['max_tiers']}</div><div class="sum-lbl">Tiers</div></div>
-<div class="sum-item"><div class="sum-val">{hub_count}</div><div class="sum-lbl">Hubs</div></div>
-<div class="sum-item"><div class="sum-val">{len(displays)}</div><div class="sum-lbl">Displays</div></div>
+<div class="section">
+<div class="section-title">FULL USB & DISPLAY TREE</div>
+<pre class="pre">{tree_html}</pre>
 </div>
 
-<h2>Stability Assessment</h2>
-<div class="card">{stability_html}</div>
+<div class="section">
+<div class="section-title">OVERALL RATING</div>
+<pre class="pre">{overall_html}</pre>
+</div>
 
-<h2>USB Tree</h2>
-<div class="card"><div class="mermaid-box"><pre class="mermaid">{mermaid_tree}</pre></div></div>
+<div class="section">
+<div class="section-title">PER PORT</div>
+<pre class="pre">{ext_lines_html}</pre>
+</div>
 
-<h2>Connected Displays</h2>
-<div class="card">{displays_html}</div>
+<div class="section">
+<div class="section-title">PER PORT (INTERNAL)</div>
+<pre class="pre">{int_lines_html}</pre>
+</div>
+
+<div class="section">
+<div class="section-title">CONNECTED DISPLAYS</div>
+<pre class="pre">{disp_lines_html}</pre>
+</div>
 
 {notes_html}
+{monitoring_html}
+{unstable_html}
 
-<div class="footer">ProAV Shoko v1.0.0 &middot; {ts} &middot; hop_limits.csv from src/assets/</div>
+<div class="footer">ProAV Shoko v1.0.0 &middot; {ts}</div>
 </div>
-<script>
-mermaid.initialize({{
-    startOnLoad:true,
-    theme:'dark',
-    themeVariables:{{
-        primaryColor:'#161b22', primaryTextColor:'#e6edf3',
-        primaryBorderColor:'#30363d', lineColor:'#484f58',
-        secondaryColor:'#161b22', tertiaryColor:'#0d1117',
-        background:'#0d1117', mainBkg:'#0d1117',
-        secondBkg:'#161b22', tertiaryBkg:'#21262d'
-    }},
-    flowchart:{{useMaxWidth:true,htmlLabels:true,curve:'basis'}}
-}});
-</script>
 </body>
-</html>"""
-
-    def generate_pdf_report(self, html_path: str, custom_path: Optional[str] = None) -> Optional[str]:
-        if HTML is None:
-            return None
-        try:
-            pdf_path = Path(custom_path) if custom_path else Path(html_path).with_suffix('.pdf')
-            pdf_path.parent.mkdir(parents=True, exist_ok=True)
-            HTML(filename=html_path).write_pdf(str(pdf_path))
-            return str(pdf_path)
-        except Exception:
-            return None
-
-    def open_report(self, file_path: str) -> None:
-        try:
-            abs_path = os.path.abspath(file_path)
-            if sys.platform == 'darwin':
-                subprocess.run(['open', abs_path], check=False)
-            elif sys.platform == 'win32':
-                os.startfile(abs_path)
-            else:
-                webbrowser.open(f'file://{abs_path}')
-        except Exception:
-            pass
+</html>""".format(
+            css=self._load_css(),
+            ts=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            platform_info=platform_info,
+            ap_html='<span class="tag apple">Apple Silicon</span>' if platform_info.get('is_apple_silicon') else '',
+            mh=stability.get('max_hops', 0),
+            mt=stability.get('max_tiers', 0),
+            len_displays=len(displays),
+            tree_html="<br>".join(self._escape(line) for line in self._build_tree_html(usb_tree)) if usb_tree else "No USB devices found.",
+            overall_html="<br>".join([overall_html] + [self._format_verdict(v) for v in stability.get('verdicts', [])]),
+            ext_lines_html="<br>".join(self._escape(line) for line in ext_lines),
+            int_lines_html="<br>".join(self._escape(line) for line in int_lines),
+            disp_lines_html="<br>".join(self._escape(line) for line in disp_lines),
+            notes_html=notes_html,
+            monitoring_html=monitoring_html,
+            unstable_html=unstable_html,
+            ts=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
