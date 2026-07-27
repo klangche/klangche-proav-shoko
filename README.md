@@ -121,8 +121,6 @@ git clone https://github.com/klangche/klangche-proav-shoko
 cd klangche-proav-shoko
 pip install -e .
 python run.py --cli
-# Or GUI:
-python run.py
 ```
 
 ---
