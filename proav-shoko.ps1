@@ -1,8 +1,8 @@
-﻿<#
+<#
 .SYNOPSIS
-    Shōko Launcher - USB + Display Diagnostic Tool
+    Shoko Launcher - USB + Display Diagnostic Tool
 .DESCRIPTION
-    Downloads and runs the main Shōko diagnostic script from GitHub.
+    Downloads and runs the main Shoko diagnostic script from GitHub.
     Supports both direct execution and "irm | iex" one-liner.
 #>
 
@@ -15,7 +15,7 @@ $Branch = "dev"
 $Base = "https://raw.githubusercontent.com/$Repo/$Branch"
 
 Write-Host "==============================================================================" -ForegroundColor Cyan
-Write-Host "Shōko – USB + Display Diagnostic Tool Launcher" -ForegroundColor Cyan
+Write-Host "Shoko - USB + Display Diagnostic Tool Launcher" -ForegroundColor Cyan
 Write-Host "==============================================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -29,7 +29,7 @@ $isAdmin = try {
 $isAdmin = $isAdmin -and $isAdmin.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 if (-not $isAdmin) {
-    Write-Host "Limited mode – full features require Administrator rights." -ForegroundColor Yellow
+    Write-Host "Limited mode - full features require Administrator rights." -ForegroundColor Yellow
     $elevate = Read-Host "Run with administrator privileges? (y/n)"
     if ($elevate -match '^[Yy]') {
         $temp = "$env:TEMP\shoko-elevated.ps1"
@@ -52,8 +52,7 @@ if (-not $isAdmin) {
 
 try {
     Write-Host "Loading main script..." -ForegroundColor Gray
-    Write-Verbose "Downloading from: $Base/proav-shoko_powershell.ps1"
-    $script = Invoke-RestMethod "$Base/proav-shoko_powershell.ps1"
+    $script = @(Invoke-RestMethod "$Base/proav-shoko_powershell.ps1") -join "`n"
     Invoke-Expression $script
 } catch {
     Write-Host "Failed to load main script: $($_.Exception.Message)" -ForegroundColor Red
