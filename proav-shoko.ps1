@@ -26,7 +26,16 @@ for ($i = 0; $i -lt $args.Count; $i += 2) {
 }
 
 $Repo = "klangche/klangche-proav-shoko"
+$ApiBase = "https://api.github.com/repos/$Repo/contents"
 $Base = "https://raw.githubusercontent.com/$Repo/$Branch"
+
+function Get-GitHubScript {
+    param($Path)
+    $url = "$ApiBase/$Path?ref=$Branch"
+    $api = Invoke-RestMethod $url
+    $bytes = [System.Convert]::FromBase64String($api.content)
+    return [System.Text.Encoding]::UTF8.GetString($bytes)
+}
 
 Write-Host "==============================================================================" -ForegroundColor Cyan
 Write-Host "Shoko - USB + Display Diagnostic Tool Launcher" -ForegroundColor Cyan
@@ -52,7 +61,7 @@ if (-not $isAdmin) {
             $ps1Args = @("-Branch", $Branch)
             if ($CsvPath) { $ps1Args += "-CsvPath", $CsvPath }
             $argumentString = $ps1Args -join ' '
-            Invoke-RestMethod "$Base/proav-shoko_powershell.ps1" | Out-File $temp -Encoding UTF8
+            Get-GitHubScript "proav-shoko_powershell.ps1" | Out-File $temp -Encoding UTF8
             Write-Verbose "Launching elevated PowerShell"
             Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$temp`" $argumentString" -Verb RunAs
         } catch {
@@ -66,8 +75,7 @@ if (-not $isAdmin) {
 
 try {
     Write-Host "Loading main script..." -ForegroundColor Gray
-    $script = Invoke-RestMethod "$Base/proav-shoko_powershell.ps1"
-    $script = $script.TrimStart([char]0xFEFF)
+    $script = Get-GitHubScript "proav-shoko_powershell.ps1"
     Invoke-Expression $script
 } catch {
     Write-Host "Failed to load main script: $($_.Exception.Message)" -ForegroundColor Red
