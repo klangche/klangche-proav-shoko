@@ -16,12 +16,11 @@ on:
     branches:
       - main
     paths:
-      - 'src/assets/**'
-      - 'src/gui.py'
-      - 'src/run.py'
+      - 'src/**'
+      - 'run.py'
       - 'proav-shoko.json'
       - 'pyproject.toml'
-      - 'requirements.txt'
+      - 'proav-shoko.spec'
       - '.github/workflows/**'
     tags:
       - 'v*'
@@ -67,7 +66,9 @@ jobs:
 
       - name: Install macOS system dependencies
         if: runner.os == 'macOS'
-        run: brew install pango
+        run: |
+          export HOMEBREW_NO_REQUIRE_TAP_TRUST=1
+          brew install pango
 
       - name: Install Python dependencies
         run: |
@@ -84,6 +85,7 @@ jobs:
           --hidden-import wmi
           --hidden-import pythoncom
           --hidden-import win32com.client
+          --hidden-import usbmonitor
           run.py
 
       - name: Build executable (macOS)
@@ -92,6 +94,8 @@ jobs:
           pyinstaller --onefile --name ${{ matrix.name }}
           --paths .
           --add-data "src/assets:src/assets"
+          --hidden-import usbmonitor
+          --hidden-import screeninfo
           run.py
 
       - name: Build executable (Linux)
@@ -100,7 +104,7 @@ jobs:
           pyinstaller --onefile --name ${{ matrix.name }}
           --paths .
           --add-data "src/assets:src/assets"
-          --hidden-import pyudev
+          --hidden-import usbmonitor
           run.py
 
       - name: Smoke test the built executable

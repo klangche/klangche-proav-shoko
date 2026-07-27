@@ -37,6 +37,9 @@ HIDDEN_IMPORTS = [
     "tkinter.ttk",
     "tkinter.filedialog",
     "tkinter.messagebox",
+    "wmi",
+    "pythoncom",
+    "win32com.client",
 ]
 
 # Excludes

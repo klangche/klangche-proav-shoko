@@ -44,6 +44,11 @@ class ProAVShokoGUI:
     def __init__(self, root, csv_path=None):
         self.root = root
         self.root.title("ProAV Shoko - USB Detective")
+        try:
+            import ctypes
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:
+            pass
         self.root.geometry("1400x800")
         self.root.minsize(700, 500)
 
@@ -521,8 +526,9 @@ class ProAVShokoGUI:
             self._start_analysis()
 
     def _on_close(self):
-        """Stop the background monitoring thread cleanly before closing."""
+        """Stop the background monitoring thread and close the window."""
         self._stop_monitoring()
+        self.root.destroy()
 
     def save_logs(self, path):
         """Save analysis logs to a file."""
