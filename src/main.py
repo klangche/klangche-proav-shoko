@@ -19,7 +19,7 @@ def main():
     )
     parser.add_argument(
         '--csv-path',
-        help='Path to custom hop_limits CSV file for USB analysis'
+        help='Path to custom USB data file (CSV format, e.g. usb_data.csv)'
     )
     args = parser.parse_args()
 

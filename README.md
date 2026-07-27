@@ -15,7 +15,8 @@ Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD envir
 - [Overview](#overview)
 - [Why ProAV Shoko?](#why-proav-shoko)
 - [Features](#features)
-- [4 Ways to Run](#4-ways-to-run)
+- [Downloads](#downloads)
+- [5 Ways to Run](#5-ways-to-run)
 - [Usage](#usage)
 - [Tech Stack](#tech-stack)
 - [Building From Source](#building-from-source)
@@ -69,61 +70,64 @@ In modern meeting rooms we often see:
 
 ---
 
-## 4 Ways to Run
+## Downloads
 
-### 1. Windows Executable (`.exe`)
+> All pre-built binaries are available on the **[Releases page](https://github.com/klangche/klangche-proav-shoko/releases)**.
+>
+> No installation required — download, unzip, and run.
+
+---
+
+## 5 Ways to Run
+
+### 1. Windows Portable (`.exe`)
 ```powershell
-# Download from Releases page
+# CLI mode
 proav-shoko-windows.exe --cli
-# Or run GUI
+
+# GUI mode (no arguments)
 proav-shoko-windows.exe
 ```
+**Portable** — no install needed, runs on any Windows 10/11 x64.
 
-### 2. macOS Application (`.app`)
+### 2. macOS App (`.app`)
 ```bash
-# Download from Releases page
 # Intel Mac:
-open proav-shoko-macos-intel.app
+open ProAV\ Shoko.app
 
-# Apple Silicon Mac:
-open proav-shoko-macos-apple-silicon.app
+# Apple Silicon Mac (M1/M2/M3/M4):
+open ProAV\ Shoko.app
 
-# Or CLI:
-./proav-shoko-macos-arm64 --cli
+# CLI mode (both architectures):
+./proav-shoko-macos --cli
 ```
+**Portable** — drag to Applications or run from anywhere.
 
 ### 3. Linux Executable
 ```bash
-# Download from Releases page
 chmod +x proav-shoko-linux
 ./proav-shoko-linux --cli
+
+# GUI mode (requires tkinter):
+./proav-shoko-linux
 ```
 
-### 4. PowerShell One-Liner (Always from GitHub)
+### 4. PowerShell Script
 ```powershell
-# Download and run latest version from GitHub
+# Run directly from GitHub (always latest version):
 irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1 | iex
-
-# Run with verbose output
-.\proav-shoko.ps1 -Verbose
 ```
-**Features:**
-- Downloads the latest version automatically from GitHub
-- Runs with or without admin rights
-- Supports both basic and elevated security modes
-- Full logging and error handling
-- Always uses the most current version from the repository
+**No Python required** — runs on any Windows machine with PowerShell 5.1+.
 
-### 5. Python Script (Direct)
+### 5. Python Script (Source)
 ```bash
-# From source
 git clone https://github.com/klangche/klangche-proav-shoko
 cd klangche-proav-shoko
 pip install -e .
-python run.py --cli
-# Or GUI:
-python run.py
+python run.py --cli    # CLI mode
+python run.py          # GUI mode
 ```
+**Full control** — works on Windows, macOS, and Linux.
 
 ---
 
@@ -236,7 +240,7 @@ klangche-proav-shoko/
 │   ├── platform_utils.py         # Platform detection
 │   └── assets/
 │       ├── report.css            # Report styling
-│       └── hop_limits.csv        # Platform stability limits
+│       └── usb_data.csv          # Platform stability limits
 ├── run.py                        # Simple entry point
 ├── proav-shoko.spec              # PyInstaller spec
 ├── proav-shoko.ps1               # PowerShell launcher

@@ -285,15 +285,12 @@ class ProAVShokoGUI:
 
             self.root.after(0, self._update_platform_label)
 
-            # 2. USB analysis - load limits from custom CSV if specified, otherwise default
+            # 2. USB analysis - load limits from custom data file if specified, otherwise default
             self.usb_analyzer = USBAnalyzer(self.csv_path) if self.csv_path else USBAnalyzer()
             if self.csv_path:
                 print(f"[+] Loaded limits from: {self.csv_path}")
-            elif Path("hop_limits.csv").exists():
-                print(f"[+] Loaded limits from: hop_limits.csv")
-            else:
-                self.usb_analyzer.save_hop_limits_csv("hop_limits.csv")
-                print(f"[+] Created default hop_limits.csv")
+            elif Path("usb_data.csv").exists():
+                print(f"[+] Loaded limits from: usb_data.csv")
 
             print("\n[+] Scanning USB devices...")
             self._refresh_tree_and_stability()
@@ -380,11 +377,13 @@ class ProAVShokoGUI:
         """Update the tree display."""
         self.tree_text.delete(1.0, tk.END)
 
-        # Current hops/tiers
+        # Current hops/tiers/hubs/endpoints
+        total = stability.get('total_endpoints', 0)
+        ep_label = "endpoint" if total == 1 else "endpoints"
         self.tree_text.insert(tk.END, "\n")
         self.tree_text.insert(
             tk.END,
-            f"Current: {hops_data['max_hops']} hops, {hops_data['max_tiers']} tiers\n",
+            f"Current: {total} {ep_label}, {hops_data['max_hops']} hops, {hops_data['max_tiers']} tiers, {stability.get('max_hubs', 0)} hubs\n",
             ('info',)
         )
 
@@ -403,9 +402,10 @@ class ProAVShokoGUI:
                 tag = f'stability_{color}'
                 self.tree_text.insert(tk.END, f"  {emoji} {name}  ", (tag,))
                 self.tree_text.insert(tk.END, f"({status})  ", ('info',))
+                hubs_str = f" / {v['max_hubs']} hubs" if 'max_hubs' in v else ""
                 self.tree_text.insert(
                     tk.END,
-                    f"max {v['max_hops']} hops / {v['max_tiers']} tiers\n",
+                    f"max {v['max_hops']} hops / {v['max_tiers']} tiers{hubs_str}\n",
                     ('dim',)
                 )
 
@@ -458,15 +458,39 @@ class ProAVShokoGUI:
 
         self.tree_text.see(1.0)
 
+    @staticmethod
+    def _node_label(node):
+        """Build a display label with interface type, model name and VID:PID."""
+        model = node.get('model', node.get('name', 'Unknown'))
+        device_info = node.get('device_info', '')
+        iface_desc = node.get('interface_desc', '')
+        iface_num = node.get('interface_number')
+        if node.get('is_composite_interface'):
+            mi = f"MI_{iface_num:02d}" if iface_num is not None else ""
+            suffix = f" ({device_info})" if device_info else ""
+            if model and 'USB-enhet' not in model and 'sammansatt' not in model and 'Composite' not in model:
+                label = model
+                if mi:
+                    label += f" {mi}"
+                return f"{label}{suffix}"
+            if iface_desc:
+                iface_tag = f"HID Keyboard" if "Keyboard" in iface_desc else \
+                            f"HID Mouse" if "Mouse" in iface_desc else \
+                            iface_desc
+                return f"{iface_tag} {mi}{suffix}".strip()
+        return f"{model} ({device_info})" if device_info else model
+
     def _render_tree_to_text(self, tree, level):
         """Recursively render the USB tree into the text widget."""
         indent = "  " * level
         for node in tree:
             is_hub = node.get('is_hub', False)
             hub_tag = " [HUB]" if is_hub else ""
-            hops = node['devpath'].count('/') if node.get('devpath') else 0
+            hops = node.get('hops', 0)
+            is_int = " [INTERNAL]" if node.get('is_internal') else ""
 
-            line = f"{indent}{node.get('model', 'Unknown')}{hub_tag}  hops: {hops}\n"
+            label = self._node_label(node)
+            line = f"{indent}{label}{hub_tag}{is_int}  hops={hops}\n"
             self.tree_text.insert(tk.END, line, ('info',))
 
             if node.get('children'):
@@ -549,9 +573,11 @@ class ProAVShokoGUI:
         for node in tree:
             is_hub = node.get('is_hub', False)
             hub_tag = " [HUB]" if is_hub else ""
-            hops = node['devpath'].count('/') if node.get('devpath') else 0
+            hops = node.get('hops', 0)
+            is_int = " [INTERNAL]" if node.get('is_internal') else ""
 
-            line = f"{indent}{node.get('model', 'Unknown')}{hub_tag}  hops: {hops}\n"
+            label = self._node_label(node)
+            line = f"{indent}{label}{hub_tag}{is_int}  hops={hops}\n"
             f.write(line)
 
             if node.get('children'):
@@ -563,22 +589,22 @@ class ProAVShokoGUI:
             messagebox.showwarning("No analysis", "Run an analysis first!")
             return
 
-        default_name = f"hop_limits_{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.csv"
+        default_name = f"usb_data_{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.csv"
         file_path = filedialog.asksaveasfilename(
             defaultextension=".csv",
             filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
             initialfile=default_name,
-            title="Save hop/tier limits as CSV"
+            title="Save USB data as"
         )
 
         if not file_path:
             return
 
         try:
-            self.usb_analyzer.save_hop_limits_csv(file_path)
-            messagebox.showinfo("Done", f"CSV file saved:\n{file_path}")
+            self.usb_analyzer.save_usb_data(file_path)
+            messagebox.showinfo("Done", f"USB data saved:\n{file_path}")
         except Exception as e:
-            messagebox.showerror("Error", f"Could not save CSV: {e}")
+            messagebox.showerror("Error", f"Could not save data: {e}")
 
     def _generate_report_dialog(self):
         """Show dialog for report generation with format and port selection."""
@@ -693,16 +719,18 @@ class ProAVShokoGUI:
             devices = len(port.get('devices', []))
             hops = port.get('max_hops', 0)
             tiers = port.get('max_tiers', 0)
+            hubs = port.get('external_hubs', 0)
             
             port_var = tk.BooleanVar(value=False)
             self.port_vars[label] = port_var
 
             port_row = tk.Frame(port_frame, bg=self.colors['bg'])
             port_row.pack(fill=tk.X, pady=2)
-            
+
+            ep_label = "endpoint" if devices == 1 else "endpoints"
             cb = tk.Checkbutton(
                 port_row,
-                text=f"{label}  ({devices} devices, {hops} hops, {tiers} tiers)",
+                text=f"{label}  ({devices} {ep_label}, hops={hops}, tiers={tiers}, hubs={hubs})",
                 variable=port_var,
                 font=('Segoe UI', 10),
                 bg=self.colors['bg'],

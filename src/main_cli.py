@@ -117,11 +117,33 @@ def _print_section_header(title):
     print("-" * 70)
 
 
+def _node_label(node):
+    """Build a display label with interface type, model name and VID:PID."""
+    model = node.get('model', node.get('name', 'Unknown'))
+    device_info = node.get('device_info', '')
+    iface_desc = node.get('interface_desc', '')
+    iface_num = node.get('interface_number')
+    if node.get('is_composite_interface'):
+        mi = f"MI_{iface_num:02d}" if iface_num is not None else ""
+        suffix = f" ({device_info})" if device_info else ""
+        # Use model (ID_MODEL_FROM_DATABASE) when it's a specific name, not generic
+        if model and 'USB-enhet' not in model and 'sammansatt' not in model and 'Composite' not in model:
+            label = model
+            if mi:
+                label += f" {mi}"
+            return f"{label}{suffix}"
+        # Fall back to interface type description
+        if iface_desc:
+            iface_tag = f"HID Keyboard" if "Keyboard" in iface_desc else \
+                        f"HID Mouse" if "Mouse" in iface_desc else \
+                        iface_desc
+            return f"{iface_tag} {mi}{suffix}".strip()
+    return f"{model} ({device_info})" if device_info else model
+
 def _print_tree(nodes, prefix="", _show_internal=False, _parent_is_internal=False):
     for i, node in enumerate(nodes):
         is_last = i == len(nodes) - 1
         connector = "└── " if is_last else "├── "
-        model = node.get('model', node.get('name', 'Unknown'))
 
         badges = []
         if node.get('is_hub'):
@@ -136,9 +158,11 @@ def _print_tree(nodes, prefix="", _show_internal=False, _parent_is_internal=Fals
             badge_str = "[" + "][".join(badges) + "] "
 
         port = node.get('port', 0)
-        port_info_str = f" [port {port}]" if port else ""
+        show_port = port and not node.get('is_composite_interface')
+        port_info_str = f" [port {port}]" if show_port else ""
 
-        print(f"{prefix}{connector}{badge_str}{model}{port_info_str}")
+        label = _node_label(node)
+        print(f"{prefix}{connector}{badge_str}{label}{port_info_str}")
 
         if node.get('children'):
             child_prefix = prefix + ("    " if is_last else "│   ")
@@ -153,16 +177,23 @@ def _print_port_tree(port_node):
         _print_tree(children, "    ")
 
 
+def _print_verdict(v):
+    """Print a single verdict line with hops/tiers/hubs."""
+    status_char = '+' if v['color'] == 'green' else ('~' if v['color'] == 'orange' else '!')
+    hubs_str = f"hubs {v['current_hubs']}/{v['max_hubs']}  " if 'current_hubs' in v else ""
+    desc = v.get('description', v.get('name', ''))
+    print(
+        f"    {status_char} {desc:<22s} "
+        f"{v['status']:<9s} "
+        f"hops {v['current_hops']}/{v['max_hops']}  "
+        f"tiers {v['current_tiers']}/{v['max_tiers']}  "
+        f"{hubs_str}"
+    )
+
 def _print_stability_port(port_info, stability_data):
     """Print stability verdicts for a single port."""
     for v in stability_data:
-        status_char = '+' if v['color'] == 'green' else ('~' if v['color'] == 'orange' else '!')
-        print(
-            f"    {status_char} {v['name']:<20s} "
-            f"{v['status']:<9s} "
-            f"hops {v['current_hops']}/{v['max_hops']}  "
-            f"tiers {v['current_tiers']}/{v['max_tiers']}"
-        )
+        _print_verdict(v)
 
 
 def _prompt_report_format() -> str:
@@ -220,7 +251,10 @@ def main(csv_path=None):
     overall = stability.get('overall_worst', 'STABLE')
     mh = stability.get('max_hops', 0)
     mt = stability.get('max_tiers', 0)
-    print(f"Overall: {overall} ({mh} hops, {mt} tiers)")
+    mhub = stability.get('max_hubs', 0)
+    total = stability.get('total_endpoints', 0)
+    ep_label = "endpoint" if total == 1 else "endpoints"
+    print(f"Overall: {overall} ({total} {ep_label}, hops={mh}, tiers={mt}, hubs={mhub})")
     print()
 
     # Save original root children for per-port matching
@@ -249,13 +283,7 @@ def main(csv_path=None):
 
     print("  Overall rating")
     for v in stability.get('verdicts', []):
-        sc = '+' if v['color'] == 'green' else ('~' if v['color'] == 'orange' else '!')
-        print(
-            f"    {sc} {v['name']:<20s} "
-            f"{v['status']:<9s} "
-            f"hops {v['current_hops']}/{v['max_hops']}  "
-            f"tiers {v['current_tiers']}/{v['max_tiers']}"
-        )
+        _print_verdict(v)
     print()
     print("=" * 31 + "PER PORT" + "=" * 31)
     print()
@@ -268,9 +296,11 @@ def main(csv_path=None):
         dc = len(port_info['devices']) if port_info else 0
         ph = port_info['max_hops'] if port_info else 0
         pt = port_info['max_tiers'] if port_info else 0
+        p_hub = port_info.get('external_hubs', 0) if port_info else 0
         is_int = child.get('is_internal', False)
         int_pre = "[INTERNAL] " if is_int else ""
-        print(f"  {int_pre}{label} ({dc} devices, {ph} hops, {pt} tiers)")
+        ep_label = "endpoint" if dc == 1 else "endpoints"
+        print(f"  {int_pre}{label} ({dc} {ep_label}, hops={ph}, tiers={pt}, hubs={p_hub})")
         _print_port_tree(child)
         if is_int:
             print("    (internal)")

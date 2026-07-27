@@ -13,8 +13,12 @@ try:
     from usbmonitor import USBMonitor
     from usbmonitor.attributes import ID_MODEL, ID_VENDOR, DEVNAME, ID_MODEL_ID, ID_VENDOR_ID, ID_MODEL_FROM_DATABASE, ID_VENDOR_FROM_DATABASE
 except ImportError:
-    print("usbmonitor is not installed. Run: pip install usb-monitor")
-    sys.exit(1)
+    USBMonitor = None
+
+try:
+    from .usb_topology import get_parent_map, group_companion_hubs
+except ImportError:
+    from usb_topology import get_parent_map, group_companion_hubs
 
 
 # Status ordering used to combine multiple verdicts (e.g. hops + tiers)
@@ -30,21 +34,22 @@ class USBAnalyzer:
         Initialize the USB analyzer.
 
         Args:
-            config_path: Optional path to a hop_limits.csv file to load
+            config_path: Optional path to a usb_data.txt file to load
                 instead of the one bundled in src/assets.
         """
         self.monitor = USBMonitor()
         self.devices = {}
 
         # Load limits either from the given config path or the bundled
-        # CSV file in assets.
+        # data file in assets.
         if config_path:
             self.config_path = Path(config_path)
         else:
-            self.config_path = Path(__file__).parent / "assets" / "hop_limits.csv"
+            self.config_path = Path(__file__).parent / "assets" / "usb_data.csv"
 
         self.hop_limits = self._load_limits('max_hops')
         self.tier_limits = self._load_limits('max_tiers')
+        self.hub_limits = self._load_limits('max_hubs')
         self.platform_notes = self._load_platform_notes()
 
     def _load_limits(self, column: str) -> Dict[str, int]:
@@ -68,27 +73,26 @@ class USBAnalyzer:
 
         if not limits:
             print(f"No {column} values found in {self.config_path}, using fallback values")
-            limits = self._get_fallback_limits()
+            limits = self._get_fallback_limits(column)
 
         return limits
 
-    def _get_fallback_limits(self) -> Dict[str, int]:
-        """Fallback values if the CSV is missing or a column can't be read.
-        Used for both max_hops and max_tiers when the CSV doesn't provide them."""
-        return {
-            'windows_x86': 4,
-            'windows_arm': 4,
-            'mac_intel': 7,
-            'mac_apple_silicon': 3,
-            'linux_x86': 4,
-            'linux_arm': 4,
-            'iphone_lightning': 2,
-            'iphone_usbc': 3,
-            'samsung_usbc': 4,
-            'android_usbc': 4,
-            'ipad_lightning': 2,
-            'ipad_usbc': 3
+    def _get_fallback_limits(self, column: str = 'max_hops') -> Dict[str, int]:
+        """Fallback values if the CSV is missing or a column can't be read."""
+        base = {
+            'windows_x86': 4, 'windows_arm': 4, 'mac_intel': 7,
+            'mac_apple_silicon': 3, 'linux_x86': 4, 'linux_arm': 4,
+            'iphone_lightning': 2, 'iphone_usbc': 3, 'samsung_usbc': 4,
+            'android_usbc': 4, 'ipad_lightning': 2, 'ipad_usbc': 3
         }
+        if column == 'max_hubs':
+            return {
+                'windows_x86': 4, 'windows_arm': 4, 'mac_intel': 5,
+                'mac_apple_silicon': 2, 'linux_x86': 4, 'linux_arm': 4,
+                'iphone_lightning': 1, 'iphone_usbc': 2, 'samsung_usbc': 3,
+                'android_usbc': 3, 'ipad_lightning': 1, 'ipad_usbc': 2
+            }
+        return base
 
     def _load_platform_notes(self) -> List[Dict[str, str]]:
         """Load notes from the CSV file."""
@@ -99,11 +103,13 @@ class USBAnalyzer:
                     reader = csv.DictReader(f)
                     for row in reader:
                         platform = row.get('platform', '').strip()
+                        system = row.get('system', '').strip()
                         description = row.get('description', '').strip()
                         note = row.get('notes', '').strip()
-                        if platform and note:
+                        if platform:
                             notes.append({
                                 'platform': platform,
+                                'system': system,
                                 'description': description,
                                 'note': note
                             })
@@ -115,32 +121,33 @@ class USBAnalyzer:
         """Get notes for use in reports."""
         return self.platform_notes
 
-    def save_hop_limits_csv(self, path: str) -> None:
+    def save_usb_data(self, path: str) -> None:
         """
-        Save the current hop and tier limits (and any known notes) to a CSV file.
+        Save the current USB limits data to a file.
 
         Args:
-            path: Destination path for the CSV file.
+            path: Destination path for the data file.
         """
         notes_by_platform = {n['platform']: n for n in self.platform_notes}
-        platforms = sorted(set(self.hop_limits) | set(self.tier_limits))
+        platforms = sorted(set(self.hop_limits) | set(self.tier_limits) | set(self.hub_limits))
 
         with open(path, 'w', encoding='utf-8', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['platform', 'max_hops', 'max_tiers', 'description', 'notes'])
+            writer.writerow(['platform', 'max_hops', 'max_tiers', 'max_hubs', 'description', 'notes'])
             for platform in platforms:
                 note = notes_by_platform.get(platform, {})
                 writer.writerow([
                     platform,
                     self.hop_limits.get(platform, ''),
                     self.tier_limits.get(platform, ''),
+                    self.hub_limits.get(platform, ''),
                     note.get('description', ''),
                     note.get('note', '')
                 ])
 
     def _parse_devpath(self, devname: str) -> Dict[str, Any]:
         """Parse a Windows device instance path into components."""
-        result = {'hub_id': '', 'port': 0, 'is_composite_interface': False, 'depth': 0}
+        result = {'hub_id': '', 'port': 0, 'is_composite_interface': False, 'depth': 0, 'interface_number': None}
 
         if not devname:
             return result
@@ -154,6 +161,10 @@ class USBAnalyzer:
         instance = parts[2]  # e.g. T6MPKRD00HWM5 or 6&1A89C1F2&0&0000
 
         result['is_composite_interface'] = '&MI_' in hwid
+        if result['is_composite_interface']:
+            mi_match = __import__('re').search(r'&MI_(\d+)', hwid)
+            if mi_match:
+                result['interface_number'] = int(mi_match.group(1))
 
         # Parse Windows hub instance path: HubHi&HubLo&Flags&Port
         instance_parts = instance.split('&')
@@ -171,6 +182,59 @@ class USBAnalyzer:
             result['depth'] = 1
 
         return result
+
+    @staticmethod
+    def _describe_interface(attrs: dict, path_info: dict) -> str:
+        """Return a human-readable interface description from USB class info."""
+        import re
+        # Parse protocol from ID_USB_INTERFACES
+        ifaces = attrs.get('ID_USB_INTERFACES', ())
+        cls_code = 0
+        prot = 0
+        subcls = 0
+        if ifaces:
+            best = ifaces[0]
+            cm = re.search(r'Class_(\d+)', best)
+            if cm:
+                cls_code = int(cm.group(1))
+            pm = re.search(r'Prot_(\d+)', best)
+            if pm:
+                prot = int(pm.group(1))
+            sm = re.search(r'SubClass_(\d+)', best)
+            if sm:
+                subcls = int(sm.group(1))
+
+        iface_class = attrs.get('ID_USB_CLASS_FROM_DATABASE', '')
+
+        # For HID devices, use protocol to distinguish Keyboard/Mouse
+        if cls_code == 3 or 'HID' in iface_class:
+            if prot == 1:
+                return 'HID Keyboard'
+            elif prot == 2:
+                return 'HID Mouse'
+            elif prot == 0 and subcls == 1:
+                return 'HID Keyboard'
+            if iface_class and 'HID' in iface_class:
+                return 'HID'
+            return 'HID'
+
+        # For known class codes, return descriptive name
+        class_map = {
+            1: 'Audio', 2: 'Communications', 5: 'Physical',
+            6: 'Image', 7: 'Printer', 8: 'Mass Storage',
+            9: 'Hub', 10: 'CDC Data', 14: 'Camera',
+            224: 'Wireless', 239: 'Miscellaneous',
+        }
+        if cls_code in class_map:
+            return class_map[cls_code]
+
+        # Fall back to ID_USB_CLASS_FROM_DATABASE for Windows-provided names
+        if iface_class and 'Class' not in iface_class and 'class' not in iface_class:
+            return iface_class
+
+        if cls_code:
+            return f'Class_{cls_code:02X}'
+        return ''
 
     def _is_internal(self, node: Dict) -> bool:
         """Heuristic to determine if a device is internal to the computer."""
@@ -206,89 +270,86 @@ class USBAnalyzer:
                 devname = attrs.get('DEVNAME', dev_name)
                 path_info = self._parse_devpath(devname)
 
+                model = attrs.get(ID_MODEL_FROM_DATABASE, attrs.get(ID_MODEL, 'Unknown'))
+                vendor = attrs.get(ID_VENDOR_FROM_DATABASE, attrs.get(ID_VENDOR, 'Unknown'))
+                vid = attrs.get(ID_VENDOR_ID, '')
+                pid = attrs.get(ID_MODEL_ID, '')
+
+                # Build a descriptive label showing VID:PID when model is generic
+                if vid and pid:
+                    device_info = "VID_{0}&PID_{1}".format(vid, pid)
+                else:
+                    device_info = ""
+
+                # Parse USB interface class info for human-readable type
+                iface_class = attrs.get('ID_USB_CLASS_FROM_DATABASE', '')
+                iface_desc = self._describe_interface(attrs, path_info)
+
+                # Detect hubs: check English "hub", Swedish "nav", and USB interface class
+                model_lower = attrs.get(ID_MODEL, '').lower()
+                ifaces_raw = attrs.get('ID_USB_INTERFACES', ())
+                is_hub = 'hub' in model_lower or 'nav' in model_lower
+                if not is_hub:
+                    for ifc in ifaces_raw:
+                        if 'HUB' in ifc.upper():
+                            is_hub = True
+                            break
+
                 nodes[dev_name] = {
                     'name': dev_name,
                     'devpath': devname,
                     'attributes': attrs,
                     'children': [],
-                    'is_hub': 'hub' in attrs.get(ID_MODEL, '').lower() or 'hub' in attrs.get('ID_MODEL', '').lower(),
-                    'model': attrs.get(ID_MODEL_FROM_DATABASE, attrs.get(ID_MODEL, 'Unknown')),
-                    'vendor': attrs.get(ID_VENDOR_FROM_DATABASE, attrs.get(ID_VENDOR, 'Unknown')),
+                    'is_hub': is_hub,
+                    'model': model,
+                    'vendor': vendor,
+                    'vid': vid,
+                    'pid': pid,
+                    'device_info': device_info,
                     'is_composite_interface': path_info['is_composite_interface'],
+                    'interface_number': path_info['interface_number'],
+                    'interface_class': iface_class,
+                    'interface_desc': iface_desc,
                     'hub_id': path_info['hub_id'],
                     'port': path_info['port'],
                     'depth': path_info['depth']
                 }
                 nodes[dev_name]['is_internal'] = self._is_internal(nodes[dev_name])
 
-            # Phase 2: build tree structure
-            # Find root USB controllers/hubs
-            hubs_map = {}  # hub_id -> list of nodes
+            # Phase 2: build tree structure using platform topology + companion hub grouping
+            parent_map = get_parent_map(dev_dict, nodes)
             root_nodes = []
-            composite_parents = {}  # vid_pid -> list of MI child nodes
+            assigned = set()
 
+            # Helper: find node by devpath (case-insensitive match)
+            def find_node(devpath):
+                lower = devpath.lower()
+                for n_name, n_node in nodes.items():
+                    if n_node.get('devpath', '').lower() == lower:
+                        return n_node
+                return None
+
+            # Attach each node to its parent, or mark as root
             for name, node in nodes.items():
-                devname = node['devpath']
-                parts = devname.split('\\')
-                hwid = parts[1] if len(parts) >= 3 else ''
-                vid_pid = hwid.split('&MI_')[0] if '&MI_' in hwid else hwid
+                devpath = node.get('devpath', name)
+                parent_devpath = parent_map.get(devpath)
 
-                if node['is_composite_interface']:
-                    composite_parents.setdefault(vid_pid, []).append(node)
-                elif node['hub_id']:
-                    hubs_map.setdefault(node['hub_id'], []).append(node)
-                else:
-                    root_nodes.append(node)
+                if parent_devpath:
+                    parent = find_node(parent_devpath)
+                    if parent:
+                        parent.setdefault('children', []).append(node)
+                        assigned.add(name)
+                        continue
+                # No parent found in our nodes → root node
+                root_nodes.append(node)
+                assigned.add(name)
 
-            # Create hub entries for each hub_id group
-            tree = []
-            for hub_id, children in hubs_map.items():
-                hub_node = {
-                    'name': f"HUB [{hub_id}]",
-                    'devpath': f"\\hub_{hub_id}",
-                    'attributes': {},
-                    'children': children,
-                    'is_hub': True,
-                    'model': f"USB Hub ({hub_id})",
-                    'vendor': 'Generic',
-                    'is_composite_interface': False,
-                    'hub_id': hub_id,
-                    'port': 0,
-                    'depth': 1,
-                    'is_internal': True
-                }
-                root_nodes.append(hub_node)
-
-            # Attach composite interfaces as children of their parent
-            for vid_pid, interfaces in composite_parents.items():
-                parent = None
-                for rn in root_nodes:
-                    if vid_pid in rn.get('devpath', '') or rn.get('devpath', '').startswith(vid_pid):
-                        parent = rn
-                        break
-                if parent:
-                    for iface in interfaces:
-                        parent.setdefault('children', []).append(iface)
-                else:
-                    composite_node = {
-                        'name': vid_pid,
-                        'devpath': vid_pid,
-                        'attributes': {},
-                        'children': interfaces,
-                        'is_hub': False,
-                        'model': f"Composite ({vid_pid})",
-                        'vendor': 'Generic',
-                        'is_composite_interface': False,
-                        'hub_id': '',
-                        'port': 0,
-                        'depth': 1,
-                        'is_internal': False
-                    }
-                    root_nodes.append(composite_node)
+            # Group companion hubs (e.g. Apple MSFT20/MSFT30) under virtual parent
+            root_nodes = group_companion_hubs(nodes, root_nodes)
 
             # Propagate is_internal from children to parents
-            def propagate_internal(nodes):
-                for n in nodes:
+            def propagate_internal(nodes_list):
+                for n in nodes_list:
                     if n.get('children'):
                         propagate_internal(n['children'])
                         if any(c.get('is_internal') for c in n['children']):
@@ -297,8 +358,8 @@ class USBAnalyzer:
             propagate_internal(root_nodes)
 
             # Calculate hops (depth) for each node
-            def assign_hops(nodes, depth=0):
-                for n in nodes:
+            def assign_hops(nodes_list, depth=0):
+                for n in nodes_list:
                     n['hops'] = depth
                     if n.get('children'):
                         assign_hops(n['children'], depth + 1)
@@ -345,12 +406,12 @@ class USBAnalyzer:
         devices_by_hops = defaultdict(list)
 
         def traverse(node, depth):
-            hops = node.get('hops', depth)
-            devices_by_hops[hops].append(node['name'])
-            depths.append(hops)
+            devices_by_hops[depth].append(node['name'])
+            depths.append(depth)
 
             for child in node.get('children', []):
-                traverse(child, depth + 1)
+                next_depth = depth if child.get('is_virtual') else depth + 1
+                traverse(child, next_depth)
 
         for root in tree:
             traverse(root, 0)
@@ -389,38 +450,50 @@ class USBAnalyzer:
         {'id': 'ipad_usbc', 'name': 'iPad USB-C', 'arch': 'Mobile'}
     ]
 
-    def _platform_verdicts(self, current_hops: int, current_tiers: int) -> list:
-        """Generate per-platform verdicts for given hops/tiers."""
+    # Room name feature (disabled by default). Set to True to activate.
+    ROOM_NAME_ENABLED = False
+
+    def _platform_verdicts(self, current_hops: int, current_tiers: int, current_hubs: int = 0) -> list:
+        """Generate per-platform verdicts for given hops/tiers/hubs."""
+        notes_by_platform = {n['platform']: n for n in self.platform_notes}
         verdicts = []
         for platform in self._PLATFORMS:
             max_hops_allowed = self.hop_limits.get(platform['id'], 4)
             max_tiers_allowed = self.tier_limits.get(platform['id'], max_hops_allowed)
+            max_hubs_allowed = self.hub_limits.get(platform['id'], max_hops_allowed)
 
             hops_eval = self._evaluate(current_hops, max_hops_allowed)
             tiers_eval = self._evaluate(current_tiers, max_tiers_allowed)
+            hubs_eval = self._evaluate(current_hubs, max_hubs_allowed)
 
-            if _STATUS_RANK[hops_eval['status']] >= _STATUS_RANK[tiers_eval['status']]:
-                status = hops_eval['status']
-            else:
-                status = tiers_eval['status']
+            combined = [hops_eval, tiers_eval, hubs_eval]
+            worst = max(combined, key=lambda x: _STATUS_RANK.get(x['status'], 0))
+            status = worst['status']
 
             warnings = []
             if hops_eval['warning']:
                 warnings.append(f"Hops {hops_eval['warning']}")
             if tiers_eval['warning']:
                 warnings.append(f"Tiers {tiers_eval['warning']}")
+            if hubs_eval['warning']:
+                warnings.append(f"Hubs {hubs_eval['warning']}")
 
             color_map = {'STABLE': 'green', 'AT LIMIT': 'orange', 'UNSTABLE': 'red'}
             emoji_map = {'STABLE': '🟢', 'AT LIMIT': '🟠', 'UNSTABLE': '🔴'}
+
+            note = notes_by_platform.get(platform['id'], {})
 
             verdicts.append({
                 'id': platform['id'],
                 'name': platform['name'],
                 'arch': platform['arch'],
+                'description': note.get('system', platform['name']),
                 'max_hops': max_hops_allowed,
                 'current_hops': current_hops,
                 'max_tiers': max_tiers_allowed,
                 'current_tiers': current_tiers,
+                'max_hubs': max_hubs_allowed,
+                'current_hubs': current_hubs,
                 'status': status,
                 'color': color_map[status],
                 'emoji': emoji_map[status],
@@ -428,6 +501,23 @@ class USBAnalyzer:
                 'warning': "; ".join(warnings) if warnings else None
             })
         return verdicts
+
+    def _count_hubs_in_path(self, tree: list) -> int:
+        """Count the maximum number of hubs along any path in the tree."""
+        def traverse(node, hub_count):
+            max_hubs = hub_count
+            if node.get('is_hub'):
+                hub_count += 1
+                max_hubs = hub_count
+            for child in node.get('children', []):
+                child_hubs = traverse(child, hub_count)
+                max_hubs = max(max_hubs, child_hubs)
+            return max_hubs
+
+        max_hubs = 0
+        for root in tree:
+            max_hubs = max(max_hubs, traverse(root, 0))
+        return max_hubs
 
     def assess_stability(self, hops_data: Dict[str, Any], tree: Optional[list] = None) -> Dict[str, Any]:
         """
@@ -438,8 +528,9 @@ class USBAnalyzer:
         """
         current_hops = hops_data.get('max_hops', 0)
         current_tiers = hops_data.get('max_tiers', 0)
+        current_hubs = self._count_hubs_in_path(tree) if tree else 0
 
-        overall_verdicts = self._platform_verdicts(current_hops, current_tiers)
+        overall_verdicts = self._platform_verdicts(current_hops, current_tiers, current_hubs)
 
         ports = []
         if tree:
@@ -469,10 +560,16 @@ class USBAnalyzer:
                     
                     # Count hubs
                     if node.get('is_hub'):
-                        hubs_in_chain.add(node.get('hub_id', node.get('name', '')))
+                        hub_id = node.get('hub_id')
+                        if not hub_id:
+                            vid = node.get('vid', '')
+                            pid = node.get('pid', '')
+                            hub_id = f"{vid}:{pid}" if vid and pid else node.get('name', '')
+                        hubs_in_chain.add(hub_id)
                     
                     for child in node.get('children', []):
-                        collect_depths(child, depth_from_port + 1)
+                        next_depth = depth_from_port if child.get('is_virtual') else depth_from_port + 1
+                        collect_depths(child, next_depth)
                 
                 # Start from the port itself (depth 0)
                 collect_depths(child, 0)
@@ -488,13 +585,43 @@ class USBAnalyzer:
                 # Hubs in the chain from this port
                 external_hubs = len(hubs_in_chain)
                 
-                device_names = [
+                # All nodes under this port (including port node)
+                all_under = self._walk_devices(child)
+                # Endpoint devices: if port has children, count children only;
+                # if port is a leaf (no children), count the port itself as 1 endpoint.
+                children_only = [d for d in all_under if d is not child]
+                if children_only:
+                    endpoint_devices = children_only
+                else:
+                    endpoint_devices = [child]  # leaf device = endpoint
+                endpoint_names = [
                     d.get('model', d.get('name', 'Unknown'))
-                    for d in self._walk_devices(child)
+                    for d in endpoint_devices
                 ]
 
                 model = child.get('model', child.get('name', ''))
-                label = model if not child.get('is_hub') else f"{model}"
+                device_info = child.get('device_info', '')
+                iface_desc = child.get('interface_desc', '')
+                iface_num = child.get('interface_number')
+                if child.get('is_composite_interface'):
+                    mi = f"MI_{iface_num:02d}" if iface_num is not None else ""
+                    if model and 'USB-enhet' not in model and 'sammansatt' not in model and 'Composite' not in model:
+                        label = model
+                        if mi:
+                            label += f" {mi}"
+                    elif iface_desc:
+                        iface_tag = "HID Keyboard" if "Keyboard" in iface_desc else \
+                                    "HID Mouse" if "Mouse" in iface_desc else \
+                                    iface_desc
+                        label = f"{iface_tag} {mi}".strip()
+                    else:
+                        label = model
+                    if device_info:
+                        label += f" ({device_info})"
+                else:
+                    if device_info:
+                        model = f"{model} ({device_info})"
+                    label = model if not child.get('is_hub') else f"{model}"
 
                 ports.append({
                     'id': i + 1,
@@ -502,8 +629,8 @@ class USBAnalyzer:
                     'max_hops': port_hops,
                     'max_tiers': port_tiers,
                     'external_hubs': external_hubs,
-                    'devices': device_names,
-                    'verdicts': self._platform_verdicts(port_hops, port_tiers)
+                    'devices': endpoint_names,
+                    'verdicts': self._platform_verdicts(port_hops, port_tiers, external_hubs)
                 })
 
         # Group overall verdicts by arch for convenience
@@ -511,9 +638,13 @@ class USBAnalyzer:
         for v in overall_verdicts:
             groups.setdefault(v['arch'], []).append(v)
 
+        total_endpoints = sum(len(p.get('devices', [])) for p in ports)
+
         return {
             'max_hops': current_hops,
             'max_tiers': current_tiers,
+            'max_hubs': current_hubs,
+            'total_endpoints': total_endpoints,
             'verdicts': overall_verdicts,
             'groups': groups,
             'ports': ports,
@@ -537,32 +668,43 @@ class USBAnalyzer:
         """Builds a text summary of the stability assessment, per USB port."""
         lines = []
         overall = stability_data.get('overall_worst', 'STABLE')
-        lines.append(f"Overall stability: {overall} ({stability_data.get('max_hops', 0)} hops, {stability_data.get('max_tiers', 0)} tiers)")
+        total = stability_data.get('total_endpoints', 0)
+        ep_label = "endpoint" if total == 1 else "endpoints"
+        lines.append(f"Overall stability: {overall} ({total} {ep_label}, hops={stability_data.get('max_hops', 0)}, tiers={stability_data.get('max_tiers', 0)}, hubs={stability_data.get('max_hubs', 0)})")
         lines.append("")
 
         ports = stability_data.get('ports', [])
         if ports:
             for port in ports:
                 label = port.get('label', f"Port {port.get('id', '')}")
-                lines.append(f"  {label} ({len(port['devices'])} devices, {port['max_hops']} hops, {port['max_tiers']} tiers)")
+                ph = port.get('max_hops', 0)
+                pt = port.get('max_tiers', 0)
+                p_hub = port.get('external_hubs', 0)
+                dc_count = len(port['devices'])
+                ep_label = "endpoint" if dc_count == 1 else "endpoints"
+                lines.append(f"  {label} ({dc_count} {ep_label}, hops={ph}, tiers={pt}, hubs={p_hub})")
                 for v in port['verdicts']:
                     status_char = '+' if v['color'] == 'green' else ('~' if v['color'] == 'orange' else '!')
+                    hubs_str = "hubs {ch}/{mh}  ".format(ch=v.get('current_hubs', 0), mh=v.get('max_hubs', 0)) if 'current_hubs' in v else ""
                     lines.append(
                         f"    {status_char} {v['name']:<20s} "
                         f"{v['status']:<9s} "
                         f"hops {v['current_hops']}/{v['max_hops']}  "
-                        f"tiers {v['current_tiers']}/{v['max_tiers']}"
+                        f"tiers {v['current_tiers']}/{v['max_tiers']}  "
+                        f"{hubs_str}"
                     )
                 lines.append("")
 
         lines.append("  Overall (all ports combined)")
         for v in stability_data.get('verdicts', []):
             status_char = '+' if v['color'] == 'green' else ('~' if v['color'] == 'orange' else '!')
+            hubs_str = "hubs {ch}/{mh}  ".format(ch=v.get('current_hubs', 0), mh=v.get('max_hubs', 0)) if 'current_hubs' in v else ""
             lines.append(
                 f"    {status_char} {v['name']:<20s} "
                 f"{v['status']:<9s} "
                 f"hops {v['current_hops']}/{v['max_hops']}  "
-                f"tiers {v['current_tiers']}/{v['max_tiers']}"
+                f"tiers {v['current_tiers']}/{v['max_tiers']}  "
+                f"{hubs_str}"
             )
 
         warnings = [v for v in stability_data.get('verdicts', []) if v.get('warning')]

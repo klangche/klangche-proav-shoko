@@ -12,14 +12,24 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 
 
+# Room name feature (disabled by default). Set to True to activate.
+_ROOM_NAME_ENABLED = False
+
+
 class ReportGenerator:
-    def __init__(self, output_dir: str = None):
+    def __init__(self, output_dir: str = None, room_name: str = ""):
         if output_dir is None:
             self.output_dir = Path(tempfile.gettempdir())
         else:
             self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
-        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.room_name = room_name
+        if _ROOM_NAME_ENABLED and self.room_name:
+            self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.file_tag = f"{self.room_name}_{self.timestamp}"
+        else:
+            self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.file_tag = self.timestamp
         self.css_path = Path(__file__).parent / "assets" / "report.css"
 
     def _load_css(self) -> str:
@@ -34,17 +44,45 @@ class ReportGenerator:
                 .replace('<', '<')
                 .replace('>', '>')
                 .replace('"', '"')
-                .replace("'", '''))
+                .replace("'", "'"))
 
     def _format_verdict(self, v):
         status_char = '+' if v['color'] == 'green' else ('~' if v['color'] == 'orange' else '!')
-        return ("    {0} {1:<20} "
-                "{2:<9} "
-                "hops {3}/{4}  "
-                "tiers {5}/{6}").format(
-                    v['name'], v['status'],
-                    v['current_hops'], v['max_hops'],
-                    v['current_tiers'], v['max_tiers'])
+        hubs_str = "hubs {0}/{1}  ".format(v.get('current_hubs', 0), v.get('max_hubs', 0)) if 'current_hubs' in v else ""
+        desc = v.get('description', v.get('name', ''))
+        return ("    {sc} {desc:<22} "
+                "{status:<9} "
+                "hops {ch}/{mh}  "
+                "tiers {ct}/{mt}  "
+                "{hubs}").format(
+                    sc=status_char,
+                    desc=desc,
+                    status=v['status'],
+                    ch=v['current_hops'], mh=v['max_hops'],
+                    ct=v['current_tiers'], mt=v['max_tiers'],
+                    hubs=hubs_str)
+
+    @staticmethod
+    def _node_label(node):
+        """Build a display label with interface type, model name and VID:PID."""
+        model = node.get('model', node.get('name', 'Unknown'))
+        device_info = node.get('device_info', '')
+        iface_desc = node.get('interface_desc', '')
+        iface_num = node.get('interface_number')
+        if node.get('is_composite_interface'):
+            mi = "MI_{0:02d}".format(iface_num) if iface_num is not None else ""
+            suffix = " ({0})".format(device_info) if device_info else ""
+            if model and 'USB-enhet' not in model and 'sammansatt' not in model and 'Composite' not in model:
+                label = model
+                if mi:
+                    label += " " + mi
+                return label + suffix
+            if iface_desc:
+                iface_tag = "HID Keyboard" if "Keyboard" in iface_desc else \
+                            "HID Mouse" if "Mouse" in iface_desc else \
+                            iface_desc
+                return "{0} {1}{2}".format(iface_tag, mi, suffix).strip()
+        return "{0} ({1})".format(model, device_info) if device_info else model
 
     def _build_tree_html(self, nodes, prefix="", is_last_list=None):
         if is_last_list is None:
@@ -55,7 +93,7 @@ class ReportGenerator:
             is_last = is_last_list[i]
             connector = "└── " if is_last else "├── "
             
-            model = node.get('model', node.get('name', 'Unknown'))
+            model = self._node_label(node)
             
             badges = []
             if node.get('is_hub'):
@@ -70,7 +108,8 @@ class ReportGenerator:
                 badge_str = "[" + "][".join(badges) + "] "
             
             port = node.get('port', 0)
-            port_str = " [port {0}]".format(port) if port else ""
+            show_port = port and not node.get('is_composite_interface')
+            port_str = " [port {0}]".format(port) if show_port else ""
             
             line = "{0}{1}{2}{3}{4}".format(prefix, connector, badge_str, model, port_str)
             lines.append(self._escape(line))
@@ -92,88 +131,96 @@ class ReportGenerator:
         lines.extend(self._build_tree_html(port_node.get('children', []), "    ", child_is_last))
         return lines
 
-    def _format_verdict(self, v):
-        status_char = '+' if v['color'] == 'green' else ('~' if v['color'] == 'orange' else '!')
-        return ("    {0} {1:<20} "
-                "{1:<9} "
-                "hops {2}/{3}  "
-                "tiers {4}/{5}").format(
-                    status_char,
-                    v['name'], v['status'],
-                    v['current_hops'], v['max_hops'],
-                    v['current_tiers'], v['max_tiers'])
-
     def generate_html_report(self, usb_tree, hops_data, stability, displays, platform_info,
                              platform_notes=None, custom_path=None, selected_ports=None,
                              monitoring_logs=None, unstable_devices=None):
         html = self._build_html(usb_tree, hops_data, stability, displays, platform_info,
                                 platform_notes, monitoring_logs, unstable_devices)
-        fn = Path(custom_path) if custom_path else self.output_dir / "proav-shoko_report_{0}.html".format(self.timestamp)
+        fn = Path(custom_path) if custom_path else self.output_dir / "proav-shoko_report_{0}.html".format(self.file_tag)
         fn.parent.mkdir(parents=True, exist_ok=True)
         with open(fn, 'w', encoding='utf-8') as f:
             f.write(html)
         return str(fn)
 
+    def generate_pdf_report(self, html_path: str, custom_path: str = None) -> Optional[str]:
+        """Convert an HTML report to PDF using weasyprint."""
+        try:
+            from weasyprint import HTML
+            pdf_path = Path(custom_path) if custom_path else html_path.replace('.html', '.pdf')
+            HTML(filename=html_path).write_pdf(pdf_path)
+            return str(pdf_path)
+        except ImportError:
+            print("  weasyprint is not installed. Install it with: pip install weasyprint")
+            return None
+        except Exception as e:
+            print(f"  PDF generation failed: {e}")
+            return None
+
+    def open_report(self, path: str) -> None:
+        """Open a report file in the default application."""
+        try:
+            if sys.platform == 'win32':
+                os.startfile(path)
+            elif sys.platform == 'darwin':
+                subprocess.run(['open', path], check=False)
+            else:
+                subprocess.run(['xdg-open', path], check=False)
+        except Exception as e:
+            print(f"  Could not open report: {e}")
+
     def _build_html(self, usb_tree, hops_data, stability, displays, platform_info,
                     platform_notes, monitoring_logs, unstable_devices):
         
         # Build tree
-        tree_lines = self._build_tree_html(usb_tree) if usb_tree else ["No USB devices found."]
-        tree_html = "<br>".join(tree_lines)
+        tree_html = "<br>".join(self._escape(line) for line in self._build_tree_html(usb_tree)) if usb_tree else "No USB devices found."
         
         # Overall rating
         overall = stability.get('overall_worst', 'STABLE')
         mh = stability.get('max_hops', 0)
         mt = stability.get('max_tiers', 0)
-        overall_html = "Overall: {0} ({1} hops, {2} tiers)".format(overall, mh, mt)
+        mhub = stability.get('max_hubs', 0)
+        total = stability.get('total_endpoints', sum(len(p.get('devices', [])) for p in stability.get('ports', [])))
+        ep_label_out = "endpoint" if total == 1 else "endpoints"
+        overall_html = "Overall: {0} ({1} {ep}, hops={2}, tiers={3}, hubs={4})".format(overall, total, mh, mt, mhub, ep=ep_label_out)
         overall_lines = []
         for v in stability.get('verdicts', []):
             overall_lines.append(self._format_verdict(v))
-        overall_html = "<br>".join([overall_html] + overall_lines)
+        overall_html_joined = "<br>".join([overall_html] + overall_lines)
         
         # Ports data
         ports_data = stability.get('ports', [])
         orig_children = usb_tree[0].get('children', []) if usb_tree else []
         
-        # EXTERNAL section
-        ext_lines = ["-------------------------------EXTERNAL-------------------------------"]
-        for idx, child in enumerate(usb_tree[0].get('children', []) if usb_tree else []):
-            if child.get('is_display') or child.get('is_internal', False):
-                continue
-            port_info = next((p for p in stability.get('ports', []) if p.get('id') == idx + 1), None)
-            label = port_info['label'] if port_info else child.get('model', 'Port')
-            dc = len(port_info['devices']) if port_info else 0
-            ph = port_info['max_hops'] if port_info else 0
-            pt = port_info['max_tiers'] if port_info else 0
-            
-            ext_lines.append("  {0} ({1} devices, {2} hops, {4} tiers)".format(label, dc, ph, pt))
-            
-            for line in self._build_port_tree_html(usb_tree[0].get('children', [])[idx]):
-                ext_lines.append("    " + line)
-            
-            if port_info:
-                for v in port_info['verdicts']:
-                    ext_lines.append(self._format_verdict(v))
-            ext_lines.append("  " + "- " * 35)
+        def _build_port_lines(header, internal_filter):
+            lines = ["-------------------------------{0}-------------------------------".format(header)]
+            for idx, child in enumerate(usb_tree[0].get('children', []) if usb_tree else []):
+                if child.get('is_display') or internal_filter(child):
+                    continue
+                port_info = next((p for p in stability.get('ports', []) if p.get('id') == idx + 1), None)
+                label = port_info['label'] if port_info else child.get('model', 'Port')
+                dc = len(port_info['devices']) if port_info else 0
+                ph = port_info['max_hops'] if port_info else 0
+                pt = port_info['max_tiers'] if port_info else 0
+                p_hub = port_info.get('external_hubs', 0) if port_info else 0
+                int_pfx = "[INTERNAL] " if header == "INTERNAL" else ""
+                
+                ep_label_out = "endpoint" if dc == 1 else "endpoints"
+                lines.append("  {int_pfx}{label} ({dc} {ep}, hops={ph}, tiers={pt}, hubs={p_hub})".format(
+                    int_pfx=int_pfx, label=label, dc=dc, ep=ep_label_out, ph=ph, pt=pt, p_hub=p_hub))
+                
+                for line in self._build_port_tree_html(usb_tree[0].get('children', [])[idx]):
+                    lines.append("    " + line)
+                
+                if port_info:
+                    for v in port_info['verdicts']:
+                        lines.append(self._format_verdict(v))
+                if header == "INTERNAL":
+                    lines.append("    (internal)")
+                lines.append("  " + "- " * 35)
+            return lines
         
-        # INTERNAL section
-        int_lines = ["-------------------------------INTERNAL-------------------------------"]
-        for idx, child in enumerate(usb_tree[0].get('children', []) if usb_tree else []):
-            if child.get('is_display') or not child.get('is_internal', False):
-                continue
-            port_info = next((p for p in stability.get('ports', []) if p.get('id') == idx + 1), None)
-            label = port_info['label'] if port_info else child.get('model', 'Port')
-            dc = len(port_info['devices']) if port_info else 0
-            ph = port_info['max_hops'] if port_info else 0
-            pt = port_info['max_tiers'] if port_info else 0
-            
-            int_lines.append("  [INTERNAL] {0} ({1} devices, {2} hops, {4} tiers)".format(label, dc, ph, pt))
-            
-            for line in self._build_port_tree_html(usb_tree[0].get('children', [])[idx]):
-                int_lines.append("    " + line)
-            
-            int_lines.append("    (internal)")
-            int_lines.append("  " + "- " * 35)
+        ext_lines = _build_port_lines("EXTERNAL", lambda c: c.get('is_internal', False))
+        int_lines = _build_port_lines("INTERNAL", lambda c: not c.get('is_internal', False))
         
         # Displays
         disp_lines = []
@@ -217,44 +264,13 @@ class ReportGenerator:
         css = self._load_css()
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         ap_html = '<span class="tag apple">Apple Silicon</span>' if platform_info.get('is_apple_silicon') else ''
-        css = self._load_css()
-        
-        # Prepare pre-formatted HTML strings
-        ext_lines_html = "<br>".join(self._escape(line) for line in ext_lines)
-        int_lines_html = "<br>".join(self._escape(line) for line in int_lines)
-        disp_lines_html = "<br>".join(self._escape(line) for line in disp_lines)
-        tree_html = "<br>".join(self._escape(line) for line in self._build_tree_html(usb_tree)) if usb_tree else "No USB devices found."
-        
-        overall = stability.get('overall_worst', 'STABLE')
-        mh = stability.get('max_hops', 0)
-        mt = stability.get('max_tiers', 0)
-        overall_html = "Overall: {0} ({1} hops, {2} tiers)".format(overall, mh, mt)
-        overall_lines = []
-        for v in stability.get('verdicts', []):
-            overall_lines.append(self._format_verdict(v))
-        overall_html = "<br>".join([overall_html] + overall_lines)
-        
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        ap_html = '<span class="tag apple">Apple Silicon</span>' if platform_info.get('is_apple_silicon') else ''
-        css = self._load_css()
+        room_header = ""
+        if _ROOM_NAME_ENABLED and self.room_name:
+            room_header = '<div class="room-name">Room: {0}</div>'.format(self._escape(self.room_name))
         
         ext_lines_html = "<br>".join(self._escape(line) for line in ext_lines)
         int_lines_html = "<br>".join(self._escape(line) for line in int_lines)
         disp_lines_html = "<br>".join(self._escape(line) for line in disp_lines)
-        tree_html = "<br>".join(self._escape(line) for line in self._build_tree_html(usb_tree)) if usb_tree else "No USB devices found."
-        
-        overall = stability.get('overall_worst', 'STABLE')
-        mh = stability.get('max_hops', 0)
-        mt = stability.get('max_tiers', 0)
-        overall_html = "Overall: {0} ({1} hops, {2} tiers)".format(overall, mh, mt)
-        overall_lines = []
-        for v in stability.get('verdicts', []):
-            overall_lines.append(self._format_verdict(v))
-        overall_html = "<br>".join([overall_html] + overall_lines)
-        
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        ap_html = '<span class="tag apple">Apple Silicon</span>' if platform_info.get('is_apple_silicon') else ''
-        css = self._load_css()
         
         return """<!DOCTYPE html>
 <html lang="en">
@@ -288,7 +304,7 @@ body {{ font-family: 'Cascadia Code', 'Consolas', 'Fira Code', 'Courier New', mo
 <body>
 <div class="wrapper">
 <div class="header">ProAV Shoko</div>
-<div class="subtitle">USB Analysis &middot; {ts}</div>
+<div class="subtitle">{room_header}USB Analysis &middot; {ts}</div>
 <div class="tags">
 <span class="tag">{platform_info[os]} {platform_info[version]}</span>
 <span class="tag">{platform_info[architecture]}</span>
@@ -297,6 +313,7 @@ body {{ font-family: 'Cascadia Code', 'Consolas', 'Fira Code', 'Courier New', mo
 <div class="stats">
 <div class="stat"><div class="stat-value">{mh}</div><div class="stat-label">Max Hops</div></div>
 <div class="stat"><div class="stat-value">{mt}</div><div class="stat-label">Tiers</div></div>
+<div class="stat"><div class="stat-value">{mhub}</div><div class="stat-label">Hubs</div></div>
 <div class="stat"><div class="stat-value">{len_displays}</div><div class="stat-label">Displays</div></div>
 </div>
 
@@ -337,15 +354,16 @@ body {{ font-family: 'Cascadia Code', 'Consolas', 'Fira Code', 'Courier New', mo
             ts=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             platform_info=platform_info,
             ap_html='<span class="tag apple">Apple Silicon</span>' if platform_info.get('is_apple_silicon') else '',
+            room_header=room_header,
             mh=stability.get('max_hops', 0),
             mt=stability.get('max_tiers', 0),
+            mhub=stability.get('max_hubs', 0),
             len_displays=len(displays),
-            tree_html="<br>".join(self._escape(line) for line in self._build_tree_html(usb_tree)) if usb_tree else "No USB devices found.",
-            overall_html="<br>".join([overall_html] + [self._format_verdict(v) for v in stability.get('verdicts', [])]),
-            ext_lines_html="<br>".join(self._escape(line) for line in ext_lines),
-            int_lines_html="<br>".join(self._escape(line) for line in int_lines),
-            disp_lines_html="<br>".join(self._escape(line) for line in disp_lines),
+            tree_html=tree_html,
+            overall_html=overall_html_joined,
+            ext_lines_html=ext_lines_html,
+            int_lines_html=int_lines_html,
+            disp_lines_html=disp_lines_html,
             notes_html=notes_html,
             monitoring_html=monitoring_html,
-            unstable_html=unstable_html,
-            ts=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            unstable_html=unstable_html)
