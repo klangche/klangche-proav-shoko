@@ -321,9 +321,9 @@ function Get-UsbTree {
     $roots = @()
     foreach ($id in $nodes.Keys) {
         $node = $nodes[$id]
-        $pId = $node.ParentId
-        if ($pId -and $nodes.ContainsKey($pId)) {
-            $nodes[$pId].Children += $id
+        $parentKey = $node.ParentId
+        if ($parentKey -and $nodes.ContainsKey($parentKey)) {
+            $nodes[$parentKey].Children += $id
         } else {
             $roots += $id
         }
