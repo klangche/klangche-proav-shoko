@@ -115,7 +115,7 @@ chmod +x proav-shoko-linux
 ### 4. PowerShell Script
 ```powershell
 # Run directly from GitHub (always latest version):
-irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1 | iex
+iex ((irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1) -join "`n")
 ```
 **No Python required** — runs on any Windows machine with PowerShell 5.1+.
 
