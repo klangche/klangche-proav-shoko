@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Sh┼ìko - USB + Display Diagnostic Tool
 .DESCRIPTION
