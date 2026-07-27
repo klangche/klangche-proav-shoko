@@ -292,7 +292,7 @@ function Get-UsbTree {
     $hubs = @()
     $devices = @()
     $maxDepth = 0
-    $treeOutput = "HOST`n"
+    $script:treeOutput = "HOST`n"
 
     # First pass: extract path information and build device objects
     foreach ($d in $allDevices) {
@@ -394,11 +394,11 @@ function Get-UsbTree {
     }
 
     if ($roots.Count -eq 0) {
-        $treeOutput += "├── USB Controllers (Flat)`n"
+        $script:treeOutput += "├── USB Controllers (Flat)`n"
         foreach ($id in ($deviceMap.Keys | Sort-Object { $deviceMap[$_].Name })) {
             $node = $deviceMap[$id]
             $tag = if ($node.IsHub) { " [HUB]" } else { "" }
-            $treeOutput += "│   ├── $($node.Name)$tag (depth $($node.Depth))`n"
+            $script:treeOutput += "│   ├── $($node.Name)$tag (depth $($node.Depth))`n"
         }
     } else {
         foreach ($id in $roots) {
@@ -409,7 +409,7 @@ function Get-UsbTree {
     $numTiers = $maxDepth + 1
 
     return [PSCustomObject]@{
-        Tree = $treeOutput
+        Tree = $script:treeOutput
         MaxHops = $maxDepth
         Tiers = $numTiers
         Devices = $devices.Count
@@ -484,7 +484,7 @@ function Get-UsbTree {
             $displayOutput += "`n"
         }
     } else {
-        $displayOutput += "$($Config.messages.noDevices)`n"
+        $displayOutput += "No displays found`n"
     }
     
     return $displayOutput
