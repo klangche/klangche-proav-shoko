@@ -67,6 +67,7 @@ if (-not $isAdmin) {
 try {
     Write-Host "Loading main script..." -ForegroundColor Gray
     $script = Invoke-RestMethod "$Base/proav-shoko_powershell.ps1"
+    $script = $script.TrimStart([char]0xFEFF)
     Invoke-Expression $script
 } catch {
     Write-Host "Failed to load main script: $($_.Exception.Message)" -ForegroundColor Red
