@@ -14,11 +14,10 @@
     Run with debug output
 #>
 
-[CmdletBinding()]
-param(
-    [string]$CsvPath = "",
-    [switch]$Verbose
-)
+# --- Configuration (change before running) ---
+$CsvPath = ""
+# --------------------------------------------
+
 
 $ErrorActionPreference = 'Stop'
 $global:error.Clear()
