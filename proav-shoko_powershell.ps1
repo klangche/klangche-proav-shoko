@@ -288,6 +288,8 @@ function Get-UsbTree {
 
     if (-not $allDevices) { $allDevices = @() }
 
+    Write-Verbose "Found $($allDevices.Count) USB devices"
+
     $deviceMap = @{}
     $hubs = @()
     $devices = @()
@@ -311,6 +313,8 @@ function Get-UsbTree {
         if ($depth -gt $maxDepth) { $maxDepth = $depth }
 
         $name = if ($d.FriendlyName) { $d.FriendlyName } else { $d.Name }
+
+        Write-Verbose "  Device: '$name' $($d.InstanceId) path='$path' depth=$depth isHub=$isHub"
 
         $deviceMap[$d.InstanceId] = @{
             Name = $name
@@ -344,6 +348,7 @@ function Get-UsbTree {
         }
 
         if ($bestParentId) {
+            Write-Verbose "  Parent: $($deviceMap[$bestParentId].Name) -> Child: $($deviceMap[$childId].Name)"
             $deviceMap[$bestParentId].Children += $childId
         }
     }
@@ -368,32 +373,10 @@ function Get-UsbTree {
 
     $roots = $roots | Sort-Object { $deviceMap[$_].Depth, $deviceMap[$_].Name }
 
-    function Write-DeviceNode {
-        param($id, $level, $isLast)
-
-        $node = $deviceMap[$id]
-        if (-not $node) { return }
-
-        $prefix = ""
-        if ($level -gt 0) {
-            for ($i = 1; $i -lt $level; $i++) {
-                $prefix += "│   "
-            }
-            $prefix += if ($isLast) { "└── " } else { "├── " }
-        } else {
-            $prefix = "├── "
-        }
-
-        $tag = if ($node.IsHub) { " [HUB]" } else { "" }
-        $script:treeOutput += "$prefix$($node.Name)$tag (depth $($node.Depth))`n"
-
-        $children = $node.Children | Sort-Object { $deviceMap[$_].Name }
-        for ($i = 0; $i -lt $children.Count; $i++) {
-            Write-DeviceNode $children[$i] ($level + 1) ($i -eq $children.Count - 1)
-        }
-    }
+    Write-Verbose "Found $($roots.Count) root devices (total in map: $($deviceMap.Keys.Count))"
 
     if ($roots.Count -eq 0) {
+        Write-Verbose "Flat fallback: all devices as flat list"
         $script:treeOutput += "├── USB Controllers (Flat)`n"
         foreach ($id in ($deviceMap.Keys | Sort-Object { $deviceMap[$_].Name })) {
             $node = $deviceMap[$id]
@@ -401,8 +384,19 @@ function Get-UsbTree {
             $script:treeOutput += "│   ├── $($node.Name)$tag (depth $($node.Depth))`n"
         }
     } else {
+        Write-Verbose "Writing tree output for $($roots.Count) roots"
         foreach ($id in $roots) {
-            Write-DeviceNode $id 0 ($id -eq $roots[-1])
+            Write-Verbose "  Root: $($deviceMap[$id].Name)"
+            $node = $deviceMap[$id]
+            $prefix = "├── "
+            $tag = if ($node.IsHub) { " [HUB]" } else { "" }
+            $script:treeOutput += "$prefix$($node.Name)$tag (depth $($node.Depth))`n"
+            
+            $children = $node.Children | Sort-Object { $deviceMap[$_].Name }
+            foreach ($childId in $children) {
+                $child = $deviceMap[$childId]
+                $script:treeOutput += "│   ├── $($child.Name) (depth $($child.Depth))`n"
+            }
         }
     }
 
