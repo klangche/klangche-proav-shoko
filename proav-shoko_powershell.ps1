@@ -290,113 +290,101 @@ function Get-UsbTree {
 
     Write-Verbose "Found $($allDevices.Count) USB devices"
 
-    $deviceMap = @{}
+    $nodes = @{}
     $hubs = @()
     $devices = @()
     $maxDepth = 0
-    $script:treeOutput = "HOST`n"
 
-    # First pass: extract path information and build device objects
+    # Build nodes from PnP devices and query parent via DEVPKEY_Device_Parent
     foreach ($d in $allDevices) {
         $isHub = ($d.FriendlyName -like "*hub*") -or ($d.Name -like "*hub*") -or ($d.Class -eq "USBHub")
         if ($isHub) { $hubs += $d } else { $devices += $d }
 
-        $parts = $d.InstanceId -split '\\'
-        if ($parts.Count -ge 3) {
-            $path = $parts[2..($parts.Count-1)] -join '\\'
-            $depth = $parts.Count - 2
-        } else {
-            $path = $parts[1]
-            $depth = 0
-        }
-
-        if ($depth -gt $maxDepth) { $maxDepth = $depth }
-
         $name = if ($d.FriendlyName) { $d.FriendlyName } else { $d.Name }
 
-        Write-Verbose "  Device: '$name' $($d.InstanceId) path='$path' depth=$depth isHub=$isHub"
+        $parentId = try {
+            $prop = $d | Get-PnpDeviceProperty -KeyName "DEVPKEY_Device_Parent" -ErrorAction Stop
+            $prop.Data
+        } catch {
+            $null
+        }
 
-        $deviceMap[$d.InstanceId] = @{
+        $nodes[$d.InstanceId] = @{
             Name = $name
-            Depth = $depth
             IsHub = $isHub
-            Path = $path
+            ParentId = $parentId
             Children = @()
         }
     }
 
-    # Build parent-child relationships using path prefix matching
-    $ids = @($deviceMap.Keys)
-    foreach ($childId in $ids) {
-        $child = $deviceMap[$childId]
-        $bestParentId = $null
-        $bestParentDepth = -1
-
-        foreach ($parentId in $ids) {
-            if ($parentId -eq $childId) { continue }
-            $parent = $deviceMap[$parentId]
-
-            $parentPath = $parent.Path
-            $childPath = $child.Path
-
-            if ($parentPath -and $childPath -and $childPath.StartsWith($parentPath) -and $childPath.Length -gt $parentPath.Length) {
-                if ($parent.Depth -gt $bestParentDepth) {
-                    $bestParentDepth = $parent.Depth
-                    $bestParentId = $parentId
-                }
-            }
-        }
-
-        if ($bestParentId) {
-            Write-Verbose "  Parent: $($deviceMap[$bestParentId].Name) -> Child: $($deviceMap[$childId].Name)"
-            $deviceMap[$bestParentId].Children += $childId
-        }
-    }
-
-    # Find root devices (no parent found)
+    # Attach children to parents where the parent exists in our node map
     $roots = @()
-    foreach ($id in $deviceMap.Keys) {
-        $isChild = $false
-        $node = $deviceMap[$id]
-        foreach ($otherId in $deviceMap.Keys) {
-            if ($otherId -eq $id) { continue }
-            $other = $deviceMap[$otherId]
-            if ($other.Path -and $node.Path -and $node.Path.StartsWith($other.Path) -and $node.Path.Length -gt $other.Path.Length) {
-                $isChild = $true
-                break
-            }
-        }
-        if (-not $isChild) {
+    foreach ($id in $nodes.Keys) {
+        $node = $nodes[$id]
+        $pid = $node.ParentId
+        if ($pid -and $nodes.ContainsKey($pid)) {
+            $nodes[$pid].Children += $id
+        } else {
             $roots += $id
         }
     }
 
-    $roots = $roots | Sort-Object { $deviceMap[$_].Depth, $deviceMap[$_].Name }
+    $roots = $roots | Sort-Object Name
 
-    Write-Verbose "Found $($roots.Count) root devices (total in map: $($deviceMap.Keys.Count))"
+    Write-Verbose "Found $($roots.Count) root devices (total: $($nodes.Keys.Count))"
+
+    $script:treeOutput = "HOST`n"
+
+    # Find max depth for hops calculation
+    function Measure-Depth {
+        param($id, $depth)
+        if ($depth -gt $script:maxDepth) { $script:maxDepth = $depth }
+        $node = $nodes[$id]
+        if ($node.Children.Count -gt 0) {
+            foreach ($childId in $node.Children) {
+                Measure-Depth $childId ($depth + 1)
+            }
+        }
+    }
+    $script:maxDepth = 0
+    foreach ($id in $roots) {
+        Measure-Depth $id 0
+    }
+    $maxDepth = $script:maxDepth
+
+    function Render-Node {
+        param($id, $level, $prefixStack)
+        
+        $node = $nodes[$id]
+        $isLast = ($prefixStack[-1] -eq 1)
+        
+        $linePrefix = ""
+        for ($i = 0; $i -lt ($prefixStack.Count - 1); $i++) {
+            $linePrefix += if ($prefixStack[$i] -eq 1) { "    " } else { "│   " }
+        }
+        $linePrefix += if ($isLast) { "└── " } else { "├── " }
+        
+        $tag = if ($node.IsHub) { " [HUB]" } else { "" }
+        $script:treeOutput += "$linePrefix$($node.Name)$tag`n"
+        
+        $sortedChildren = $node.Children | Sort-Object { $nodes[$_].Name }
+        for ($i = 0; $i -lt $sortedChildren.Count; $i++) {
+            $childPrefixStack = $prefixStack.Clone()
+            if ($prefixStack.Count -gt 0) {
+                $childPrefixStack[$childPrefixStack.Count - 1] = if ($isLast) { 1 } else { 0 }
+            }
+            $childPrefixStack += if ($i -eq $sortedChildren.Count - 1) { 1 } else { 0 }
+            Render-Node $sortedChildren[$i] ($level + 1) $childPrefixStack
+        }
+    }
 
     if ($roots.Count -eq 0) {
-        Write-Verbose "Flat fallback: all devices as flat list"
-        $script:treeOutput += "├── USB Controllers (Flat)`n"
-        foreach ($id in ($deviceMap.Keys | Sort-Object { $deviceMap[$_].Name })) {
-            $node = $deviceMap[$id]
-            $tag = if ($node.IsHub) { " [HUB]" } else { "" }
-            $script:treeOutput += "│   ├── $($node.Name)$tag (depth $($node.Depth))`n"
-        }
+        Write-Verbose "No roots found, using flat fallback"
+        $script:treeOutput += "└── USB Controllers (Flat)`n"
     } else {
-        Write-Verbose "Writing tree output for $($roots.Count) roots"
-        foreach ($id in $roots) {
-            Write-Verbose "  Root: $($deviceMap[$id].Name)"
-            $node = $deviceMap[$id]
-            $prefix = "├── "
-            $tag = if ($node.IsHub) { " [HUB]" } else { "" }
-            $script:treeOutput += "$prefix$($node.Name)$tag (depth $($node.Depth))`n"
-            
-            $children = $node.Children | Sort-Object { $deviceMap[$_].Name }
-            foreach ($childId in $children) {
-                $child = $deviceMap[$childId]
-                $script:treeOutput += "│   ├── $($child.Name) (depth $($child.Depth))`n"
-            }
+        for ($i = 0; $i -lt $roots.Count; $i++) {
+            $stack = if ($i -eq $roots.Count - 1) { @(1) } else { @(0) }
+            Render-Node $roots[$i] 0 $stack
         }
     }
 
