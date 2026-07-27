@@ -104,8 +104,6 @@ chmod +x proav-shoko-linux
 # Download and run latest version from GitHub
 irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1 | iex
 
-# Run with verbose output
-.\proav-shoko.ps1 -Verbose
 ```
 **Features:**
 - Downloads the latest version automatically from GitHub
