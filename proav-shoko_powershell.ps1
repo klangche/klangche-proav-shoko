@@ -54,7 +54,7 @@ function Load-Configuration {
         Falls back to retrying with visible progress
         Exits if data cannot be loaded
     #>
-    $csvUrl = "https://raw.githubusercontent.com/klangche/klangche-proav-shoko/$Branch/src/assets/usb_data.csv"
+    $csvUrl = "https://raw.githubusercontent.com/klangche/klangche-proav-shoko/refs/heads/$Branch/src/assets/usb_data.csv"
     $maxRetries = 3
     $retryCount = 0
     $delay = 2 # seconds

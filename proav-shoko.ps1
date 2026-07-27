@@ -27,7 +27,7 @@ for ($i = 0; $i -lt $args.Count; $i += 2) {
 
 $Repo = "klangche/klangche-proav-shoko"
 $ApiBase = "https://api.github.com/repos/$Repo/contents"
-$Base = "https://raw.githubusercontent.com/$Repo/$Branch"
+$BranchRef = "refs/heads/$Branch"
 
 function Get-GitHubScript {
     param($Path)
@@ -79,6 +79,6 @@ try {
     Invoke-Expression $script
 } catch {
     Write-Host "Failed to load main script: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host "Try manually: irm $Base/proav-shoko_powershell.ps1 | iex" -ForegroundColor Yellow
+    Write-Host "Try manually: irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/refs/heads/$Branch/proav-shoko_powershell.ps1 | iex" -ForegroundColor Yellow
     pause
 }
