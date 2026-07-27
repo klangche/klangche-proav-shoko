@@ -79,7 +79,7 @@ jobs:
       - name: Build executable (Windows)
         if: runner.os == 'Windows'
         run: >
-          pyinstaller --onefile --name ${{ matrix.name }}
+          pyinstaller --onefile --noconsole --name ${{ matrix.name }}
           --paths .
           --add-data "src/assets;src/assets"
           --hidden-import wmi

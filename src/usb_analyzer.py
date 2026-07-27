@@ -14,6 +14,7 @@ try:
     from usbmonitor.attributes import ID_MODEL, ID_VENDOR, DEVNAME, ID_MODEL_ID, ID_VENDOR_ID, ID_MODEL_FROM_DATABASE, ID_VENDOR_FROM_DATABASE
 except ImportError:
     USBMonitor = None
+    print("[!] usbmonitor package not installed. Run: pip install usb-monitor")
 
 try:
     from .usb_topology import get_parent_map, group_companion_hubs
@@ -37,6 +38,8 @@ class USBAnalyzer:
             config_path: Optional path to a usb_data.txt file to load
                 instead of the one bundled in src/assets.
         """
+        if USBMonitor is None:
+            raise RuntimeError("usbmonitor package not installed (pip install usb-monitor)")
         self.monitor = USBMonitor()
         self.devices = {}
 

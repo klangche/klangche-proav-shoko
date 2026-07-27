@@ -321,9 +321,10 @@ class ProAVShokoGUI:
             self.is_monitoring = True
 
         except Exception as e:
-            print(f"\n[!] Error: {e}")
-            self.root.after(0, lambda: self.status_label.config(
-                text=f"Error: {e}",
+            err_msg = str(e)
+            print(f"\n[!] Error: {err_msg}")
+            self.root.after(0, lambda m=err_msg: self.status_label.config(
+                text=f"Error: {m}",
                 foreground=self.colors['red']
             ))
         finally:
