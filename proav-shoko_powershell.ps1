@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Sh┼ìko - USB + Display Diagnostic Tool
 .DESCRIPTION
@@ -376,7 +376,7 @@ function Get-UsbTree {
         
         $sortedChildren = $node.Children | Sort-Object { $nodes[$_].Name }
         for ($i = 0; $i -lt $sortedChildren.Count; $i++) {
-            $childPrefixStack = $prefixStack.Clone()
+            $childPrefixStack = @($prefixStack)
             if ($prefixStack.Count -gt 0) {
                 $childPrefixStack[$childPrefixStack.Count - 1] = if ($isLast) { 1 } else { 0 }
             }
@@ -1013,3 +1013,4 @@ function Main {
 
 # Run main
 Main
+
