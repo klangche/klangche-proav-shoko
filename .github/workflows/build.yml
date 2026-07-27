@@ -22,6 +22,7 @@ on:
       - 'proav-shoko.json'
       - 'pyproject.toml'
       - 'requirements.txt'
+      - '.github/workflows/**'
     tags:
       - 'v*'
   workflow_dispatch:

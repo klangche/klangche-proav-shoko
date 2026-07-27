@@ -15,7 +15,6 @@ MAIN_SCRIPT = "src/main.py"
 # Data files to include
 DATAS = [
     ("src/assets/report.css", "assets"),
-    ("src/assets/hop_limits.csv", "assets"),
 ]
 
 # Hidden imports

@@ -3,10 +3,9 @@
 **ProAV Shoko** - A platform-independent analysis tool for AV environments.
 Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD environments.
 
-
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/klangche/proav-shoko/releases)
+[![Releases](https://img.shields.io/github/v/release/klangche/klangche-proav-shoko?label=download)](https://github.com/klangche/klangche-proav-shoko/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20PowerShell-lightgrey)](https://github.com/klangche/proav-shoko)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20PowerShell-lightgrey)](https://github.com/klangche/klangche-proav-shoko)
 
 ---
 
@@ -15,8 +14,7 @@ Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD envir
 - [Overview](#overview)
 - [Why ProAV Shoko?](#why-proav-shoko)
 - [Features](#features)
-- [Downloads](#downloads)
-- [5 Ways to Run](#5-ways-to-run)
+- [How to Run](#how-to-run)
 - [Usage](#usage)
 - [Tech Stack](#tech-stack)
 - [Building From Source](#building-from-source)
@@ -70,64 +68,26 @@ In modern meeting rooms we often see:
 
 ---
 
-## Downloads
+## How to Run
 
-> All pre-built binaries are available on the **[Releases page](https://github.com/klangche/klangche-proav-shoko/releases)**.
->
-> No installation required — download, unzip, and run.
+### Portable Executables (Windows / macOS / Linux)
 
----
+Download the latest build for your platform from the **[Releases page](https://github.com/klangche/klangche-proav-shoko/releases)**. No installation required — unzip and run.
 
-## 5 Ways to Run
+### PowerShell Script (Windows)
 
-### 1. Windows Portable (`.exe`)
 ```powershell
-# CLI mode
-proav-shoko-windows.exe --cli
-
-# GUI mode (no arguments)
-proav-shoko-windows.exe
+iex (irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1)
 ```
-**Portable** — no install needed, runs on any Windows 10/11 x64.
 
-### 2. macOS App (`.app`)
+No Python required — runs on any Windows machine with PowerShell 5.1+.
+
+### Python (any platform)
+
 ```bash
-# Intel Mac:
-open ProAV\ Shoko.app
-
-# Apple Silicon Mac (M1/M2/M3/M4):
-open ProAV\ Shoko.app
-
-# CLI mode (both architectures):
-./proav-shoko-macos --cli
+pip install git+https://github.com/klangche/klangche-proav-shoko.git
+proav-shoko --cli
 ```
-**Portable** — drag to Applications or run from anywhere.
-
-### 3. Linux Executable
-```bash
-chmod +x proav-shoko-linux
-./proav-shoko-linux --cli
-
-# GUI mode (requires tkinter):
-./proav-shoko-linux
-```
-
-### 4. PowerShell Script
-```powershell
-# Run directly from GitHub (always latest version):
-iex ((irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1) -join "`n")
-```
-**No Python required** — runs on any Windows machine with PowerShell 5.1+.
-
-### 5. Python Script (Source)
-```bash
-git clone https://github.com/klangche/klangche-proav-shoko
-cd klangche-proav-shoko
-pip install -e .
-python run.py --cli    # CLI mode
-python run.py          # GUI mode
-```
-**Full control** — works on Windows, macOS, and Linux.
 
 ---
 
@@ -151,15 +111,12 @@ proav-shoko --cli
 ### GUI Mode
 ```bash
 proav-shoko
-# Or
-python run.py
 ```
 
 **Features:**
 - Live USB tree with stability
 - Real-time connect/disconnect log
 - Report generation with format selection
-- Export CSV limits
 
 ### Report Output
 Reports include:
@@ -202,12 +159,16 @@ klangche-proav-shoko/
 │   └── assets/
 │       ├── report.css            # Report styling
 │       └── usb_data.csv          # Platform stability limits
-├── run.py                        # Simple entry point
 ├── proav-shoko.ps1               # PowerShell launcher
 ├── proav-shoko_powershell.ps1    # Full PS implementation
+├── run.py                        # Python entry point
+├── build.py                      # Build script
+├── proav-shoko.spec              # PyInstaller spec
 ├── pyproject.toml
+├── proav-shoko.json              # Configuration
 ├── README.md
-└── LICENSE
+├── LICENSE
+└── .github/workflows/build.yml   # CI
 ```
 
 ---
