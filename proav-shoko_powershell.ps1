@@ -14,17 +14,15 @@
     Run with debug output
 #>
 
-[CmdletBinding()]
-param(
-    [Parameter(Mandatory = $false)]
-    [string]$Branch = "dev",
-
-    [Parameter(Mandatory = $false)]
-    [string]$CsvPath = ""
-)
-
+# --- Configuration (change before running) ---
+$Branch = "dev"
+$CsvPath = ""
 # --------------------------------------------
-
+# Parse command-line arguments (works with both iex and -File)
+for ($i = 0; $i -lt $args.Count; $i += 2) {
+    if ($args[$i] -eq "-Branch" -and ($i + 1) -lt $args.Count) { $Branch = $args[$i + 1] }
+    if ($args[$i] -eq "-CsvPath" -and ($i + 1) -lt $args.Count) { $CsvPath = $args[$i + 1] }
+}
 
 $ErrorActionPreference = 'Stop'
 $global:error.Clear()

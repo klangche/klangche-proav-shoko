@@ -4,10 +4,6 @@
 .DESCRIPTION
     Downloads and runs the main Shoko diagnostic script from GitHub.
     Supports both direct execution and "irm | iex" one-liner.
-.PARAMETER Branch
-    GitHub branch to download from (default: dev)
-.PARAMETER CsvPath
-    Optional local path to usb_data.csv
 .EXAMPLE
     .\proav-shoko.ps1
     Run from dev branch in normal mode
@@ -19,16 +15,15 @@
     Run from dev branch via one-liner
 #>
 
-[CmdletBinding()]
-param(
-    [Parameter(Mandatory = $false)]
-    [string]$Branch = "dev",
-
-    [Parameter(Mandatory = $false)]
-    [string]$CsvPath = ""
-)
-
+# --- Configuration (change before running) ---
+$Branch = "dev"
+$CsvPath = ""
 # --------------------------------------------
+# Parse command-line arguments (works with both iex and -File)
+for ($i = 0; $i -lt $args.Count; $i += 2) {
+    if ($args[$i] -eq "-Branch" -and ($i + 1) -lt $args.Count) { $Branch = $args[$i + 1] }
+    if ($args[$i] -eq "-CsvPath" -and ($i + 1) -lt $args.Count) { $CsvPath = $args[$i + 1] }
+}
 
 $Repo = "klangche/klangche-proav-shoko"
 $Base = "https://raw.githubusercontent.com/$Repo/$Branch"
@@ -72,10 +67,7 @@ if (-not $isAdmin) {
 try {
     Write-Host "Loading main script..." -ForegroundColor Gray
     $script = Invoke-RestMethod "$Base/proav-shoko_powershell.ps1"
-    $ps1Args = @("-Branch", $Branch)
-    if ($CsvPath) { $ps1Args += "-CsvPath", $CsvPath }
-    $argumentString = $ps1Args -join ' '
-    Invoke-Expression "$script $argumentString"
+    Invoke-Expression $script
 } catch {
     Write-Host "Failed to load main script: $($_.Exception.Message)" -ForegroundColor Red
     Write-Host "Try manually: irm $Base/proav-shoko_powershell.ps1 | iex" -ForegroundColor Yellow
