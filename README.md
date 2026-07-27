@@ -186,55 +186,16 @@ Reports include:
 
 ---
 
-## Building From Source
-
-### Prerequisites
-```bash
-# macOS
-brew install python cairo pango gdk-pixbuf libffi
-
-# Linux (Ubuntu/Debian)
-sudo apt-get install python3-dev libcairo2-dev libpango1.0-dev libgdk-pixbuf-2.0-dev libffi-dev
-
-# Windows
-# Install Python from python.org
-# Install Visual C++ Build Tools
-```
-
-### Quick Build (Current Platform)
-```bash
-pip install -U pip pyinstaller
-pip install -e .
-python -m PyInstaller proav-shoko.spec
-```
-
-### Cross-Platform Build (via GitHub Actions)
-The repository includes `.github/workflows/build.yml` that builds for all platforms on push to main.
-
-### Output
-```
-dist/
-├── proav-shoki.exe              # Windows CLI
-├── ProAV Shoko.exe              # Windows GUI
-├── proav-shoki-macos-intel      # macOS Intel CLI
-├── ProAV Shoko.app              # macOS Intel GUI
-├── proav-shoki-macos-arm64      # macOS Apple Silicon CLI
-├── ProAV Shoko.app              # macOS Apple Silicon GUI
-└── proav-shoki-linux-x86_64     # Linux CLI
-```
-
----
-
 ## Project Structure
 
 ```
 klangche-proav-shoko/
-├── .github/workflows/build.yml   # CI/CD builds
 ├── src/
 │   ├── main.py                   # Entry point (GUI/CLI)
 │   ├── main_cli.py               # CLI logic
 │   ├── gui.py                    # Tkinter GUI
 │   ├── usb_analyzer.py           # USB tree, hops, stability
+│   ├── usb_topology.py           # Platform-specific parent detection
 │   ├── display_analyzer.py       # Display detection
 │   ├── report_generator.py       # HTML/PDF reports
 │   ├── platform_utils.py         # Platform detection
@@ -242,10 +203,8 @@ klangche-proav-shoko/
 │       ├── report.css            # Report styling
 │       └── usb_data.csv          # Platform stability limits
 ├── run.py                        # Simple entry point
-├── proav-shoko.spec              # PyInstaller spec
 ├── proav-shoko.ps1               # PowerShell launcher
 ├── proav-shoko_powershell.ps1    # Full PS implementation
-├── build.py                      # Cross-platform build script
 ├── pyproject.toml
 ├── README.md
 └── LICENSE
