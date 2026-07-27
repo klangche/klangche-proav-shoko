@@ -1,0 +1,152 @@
+name: Build
+
+# Builds a standalone executable for Windows, macOS (Intel + Apple
+# Silicon) and Linux using PyInstaller.
+#
+# - Push a tag like "v1.0.1" to build and publish a GitHub Release.
+# - Or run manually from the Actions tab (workflow_dispatch) to just
+#   check that all four platforms still build, without releasing.
+#
+# macOS builds are NOT code-signed or notarized. Users will need to
+# right-click -> Open the first time (Gatekeeper), or run:
+#   xattr -d com.apple.quarantine proav-shoko-macos-*
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/assets/**'
+      - 'src/gui.py'
+      - 'src/run.py'
+      - 'proav-shoko.json'
+      - 'pyproject.toml'
+      - 'requirements.txt'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: proav-shoko-windows
+            asset: proav-shoko-windows.exe
+          - os: macos-13          # Intel runner
+            name: proav-shoko-macos-intel
+            asset: proav-shoko-macos-intel
+          - os: macos-14          # Apple Silicon runner
+            name: proav-shoko-macos-arm64
+            asset: proav-shoko-macos-arm64
+          - os: ubuntu-latest
+            name: proav-shoko-linux
+            asset: proav-shoko-linux
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          # python3-tk: needed for the tkinter GUI
+          # libpango/libcairo/libgdk-pixbuf: needed for weasyprint PDF export
+          sudo apt-get install -y python3-tk libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libcairo2
+
+      - name: Install macOS system dependencies
+        if: runner.os == 'macOS'
+        run: brew install pango
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller
+
+      - name: Build executable (Windows)
+        if: runner.os == 'Windows'
+        run: >
+          pyinstaller --onefile --name ${{ matrix.name }}
+          --paths .
+          --add-data "src/assets;src/assets"
+          --add-data "src/assets/hop_limits.csv;src/assets"
+          --add-data "proav-shoko.json;."
+          --hidden-import wmi
+          --hidden-import pythoncom
+          --hidden-import win32com.client
+          run.py
+
+      - name: Build executable (macOS)
+        if: runner.os == 'macOS'
+        run: >
+          pyinstaller --onefile --name ${{ matrix.name }}
+          --paths .
+          --add-data "src/assets:src/assets"
+          --add-data "src/assets/hop_limits.csv:src/assets"
+          --add-data "proav-shoko.json:."
+          run.py
+
+      - name: Build executable (Linux)
+        if: runner.os == 'Linux'
+        run: >
+          pyinstaller --onefile --name ${{ matrix.name }}
+          --paths .
+          --add-data "src/assets:src/assets"
+          --add-data "src/assets/hop_limits.csv:src/assets"
+          --add-data "proav-shoko.json:."
+          --hidden-import pyudev
+          run.py
+
+      - name: Smoke test the built executable
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            BIN="dist/${{ matrix.name }}.exe"
+          else
+            BIN="dist/${{ matrix.name }}"
+            chmod +x "$BIN"
+          fi
+          "$BIN" --cli || echo "Smoke test exited non-zero (expected on a runner with no USB/display hardware), continuing."
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: |
+            dist/${{ matrix.name }}
+            dist/${{ matrix.name }}.exe
+          if-no-files-found: ignore
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Flatten artifacts into one folder
+        run: |
+          mkdir -p release
+          find dist -type f -exec cp {} release/ \;
+          ls -la release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true

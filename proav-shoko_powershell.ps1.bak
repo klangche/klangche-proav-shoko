@@ -14,15 +14,17 @@
     Run with debug output
 #>
 
-# --- Configuration (change before running) ---
-$Branch = "dev"
-$CsvPath = ""
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $false)]
+    [string]$Branch = "dev",
+
+    [Parameter(Mandatory = $false)]
+    [string]$CsvPath = ""
+)
+
 # --------------------------------------------
-# Parse command-line arguments (works with both iex and -File)
-for ($i = 0; $i -lt $args.Count; $i += 2) {
-    if ($args[$i] -eq "-Branch" -and ($i + 1) -lt $args.Count) { $Branch = $args[$i + 1] }
-    if ($args[$i] -eq "-CsvPath" -and ($i + 1) -lt $args.Count) { $CsvPath = $args[$i + 1] }
-}
+
 
 $ErrorActionPreference = 'Stop'
 $global:error.Clear()
@@ -54,7 +56,7 @@ function Load-Configuration {
         Falls back to retrying with visible progress
         Exits if data cannot be loaded
     #>
-    $csvUrl = "https://raw.githubusercontent.com/klangche/klangche-proav-shoko/refs/heads/$Branch/src/assets/usb_data.csv"
+    $csvUrl = "https://raw.githubusercontent.com/klangche/klangche-proav-shoko/$Branch/src/assets/usb_data.csv"
     $maxRetries = 3
     $retryCount = 0
     $delay = 2 # seconds
@@ -1011,4 +1013,3 @@ function Main {
 
 # Run main
 Main
-

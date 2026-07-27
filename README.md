@@ -1,123 +1,221 @@
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
-![License](https://img.shields.io/badge/license-MIT-green)
+# ProAV Shoko
+
+**ProAV Shoko** - A platform-independent analysis tool for AV environments.
+Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD environments.
 
 
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/klangche/proav-shoko/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20PowerShell-lightgrey)](https://github.com/klangche/proav-shoko)
 
-# Kangche ProAV Shōko - your ProAV detective<br> 証拠 - Shōko - Proof / Evidence / Clarity
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Why ProAV Shoko?](#why-proav-shoko)
+- [Features](#features)
+- [Downloads](#downloads)
+- [5 Ways to Run](#5-ways-to-run)
+- [Usage](#usage)
+- [Tech Stack](#tech-stack)
+- [Building From Source](#building-from-source)
+- [License](#license)
+
+---
+
+## Overview
+
+ProAV Shoko is a **platform-independent** analysis tool that:
+
+- **Scans** all connected USB devices
+- **Builds** a hierarchical tree of the USB chain
+- **Calculates** hops (number of levels) and tiers (depth)
+- **Assesses** stability based on the chain length
+- **Shows** connected displays with resolution
+- **Generates** professional HTML and PDF reports
+
+**Perfect for:** AV technicians, IT support, sales, and diagnostics teams who need to quickly identify USB issues in conference rooms.
+
+---
+
+## Why ProAV Shoko?
+
+In modern meeting rooms we often see:
+
+- USB-C docks (Unisynk, HP, Lenovo, CalDigit, Logitech, TiGHT, Hyper, Targus...)
+- Multiple hubs and/or active cables chained together adding tiers and hops.
+- Videobars, speakerphones, touch panels, wireless presentation dongles, external drives etc.
+- Users' own iPads/iPhones/Android/other devices
+
+**The problem:** Long chains often cause issues **only on Apple Silicon Macs** (M1/M2/M3/M4), while Windows and Intel Macs typically work flawlessly.
+
+**ProAV Shoko** helps technicians prove:
+*"The chain has 5 hops → Windows & Intel OK, but Apple Silicon is not stable"*
+
+---
+
+## Features
+
+| Feature | Description | Status |
+|---------|-------------|--------|
+| USB Tree | Hierarchical view of all connected devices | ✅ |
+| Hops & Tiers | Calculates the number of levels and maximum depth | ✅ |
+| Stability Assessment | Color-coded based on chain length | ✅ |
+| Apple Silicon Warning | Special warning at 5+ hops | ✅ |
+| Display Information | Shows connected displays with resolution | ✅ |
+| HTML Report | Dark background, identical to the terminal | ✅ |
+| PDF Report | Long, continuous page for printing | ✅ |
+| GUI | Live overview with tree and log | ✅ |
+
+---
+
+## Downloads
+
+> All pre-built binaries are available on the **[Releases page](https://github.com/klangche/klangche-proav-shoko/releases)**.
+>
+> No installation required — download, unzip, and run.
+
+---
+
+## 5 Ways to Run
+
+### 1. Windows Portable (`.exe`)
 ```powershell
-irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1 | iex
+# CLI mode
+proav-shoko-windows.exe --cli
+
+# GUI mode (no arguments)
+proav-shoko-windows.exe
 ```
-- Analyze, verify, and expose device or connection issues in meeting rooms and BYOD setups
-- Inspect and generate evidence for troubleshooting
-- Visualize full USB tree structure
-- Count hops and tiers in USB chains
-- Assess chain stability, highlighting potential problems
-- Designed for corporate AV and BYOD environments
+**Portable** — no install needed, runs on any Windows 10/11 x64.
 
+### 2. macOS App (`.app`)
+```bash
+# Intel Mac:
+open ProAV\ Shoko.app
 
+# Apple Silicon Mac (M1/M2/M3/M4):
+open ProAV\ Shoko.app
 
-
-## HOW TO USE THE TOOL
-1. Copy,  Paste, run command into **PowerShell** 
-2. script asks to run in basic mode or Elevated mode* (y/n)
-3. Displaying result
-4. View result in browser? (copy-paste ready) (y/n)
-5. Run Analytics (y/n)
-6. Display Analytics
-7. View result in browser? (copy-paste ready) (y/n)
-8. Exit script
-
-*Elevated = Administrator privileges
-
-
-
-## Security note
-The install command uses standard PowerShell shortcuts:<br>
-**irm** downloads the script from GitHub into memory.<br>
-**iex** runs it in your current PowerShell session.<br>
-**Nothing is installed and no data leaves your machine.**<br>
-The tool only **reads** local USB information and generates a local report.<br>
-
-You can review the full source before running:<br>
-https://github.com/klangche/klangche-proav-shoko
-
-
-
-
-
-# Why this tool matters in AV environments
-In modern conference rooms we often see:
-- USB-C docks (Unisynk, HP, Lenovo, CalDigit, Logitech, TiGHT, Hyper, Targus etc..)
-- Multiple hubs daisy-chained
-- Webcams, speakerphones, touch panels, wireless presentation dongles, external drives
-- iPads/iPhones/Android devices brought by users
-
-Long chains frequently cause problems **only on Apple Silicon Macs** (M1/M2/M3/M4), while Windows and Intel Macs usually work fine.  
-This tool helps technicians prove:  
-→ "The chain has 5 hops → Windows & Intel OK, but Apple Silicon not stable"
-
-## Target audience 
-- Everyday users who need troubleshooting or sending IT a proper report.
-- Technicians and sales people who need to share clear, professional diagnostics
-- Diagnostics team
-- IT to verify that the system works with system setups
-- POC hard-testing.
-
-## Windows version – what it can do
-- Shows full hierarchical USB tree with exact hop counts from root
-- Marks hubs clearly [HUB]
-- Calculates furthest hop distance and total tiers
-- Gives per-platform stability verdict (green/orange/pink) with Apple Silicon emphasis
-- Produces beautiful black-background HTML report (looks identical to terminal)
-- **Deep Analytics mode** (Elevated only): real-time monitoring of USB connect/disconnect events, re-handshakes, random errors
-- Asks smart questions only once: Elevated? open report?
-
-
-For AV field use we still recommend Windows laptop as primary diagnostic station — most reliable experience.
-Questions / feature requests → open issue.
-
-# Script structure
+# CLI mode (both architectures):
+./proav-shoko-macos --cli
 ```
-Repository: klangche/usb-script
-├── proav-shoko.ps1                  # Powershell launcher
-├── proav-shoko_powershell.ps1       # Windows script
-├── proav-shoko.sh                   # macOS script 
-└── proav-shoko.json                  # Central configuration
+**Portable** — drag to Applications or run from anywhere.
+
+### 3. Linux Executable
+```bash
+chmod +x proav-shoko-linux
+./proav-shoko-linux --cli
+
+# GUI mode (requires tkinter):
+./proav-shoko-linux
 ```
 
+### 4. PowerShell Script
+```powershell
+# Run directly from GitHub (always latest version):
+iex ((irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1) -join "`n")
+```
+**No Python required** — runs on any Windows machine with PowerShell 5.1+.
 
+### 5. Python Script (Source)
+```bash
+git clone https://github.com/klangche/klangche-proav-shoko
+cd klangche-proav-shoko
+pip install -e .
+python run.py --cli    # CLI mode
+python run.py          # GUI mode
+```
+**Full control** — works on Windows, macOS, and Linux.
 
-### Rating logic
+---
 
-```mermaid
-graph TD
-    Start --> Admin{Admin?}
+## Usage
 
-    Admin --> Basic[Basic]
-    Admin --> Full[Elevated]
-
-    Basic --> Tree
-    Full  --> Tree
-
-    Tree[USB + Display Tree] --> Base[Base Score]
-    Base --> Platforms[Platform verdicts]
-    Platforms --> Analytics{Analytics?}
-
-    Analytics -->|No| Report[Final report]
-    Analytics -->|Yes| Monitor[Monitor errors]
-
-    Monitor --> Penalties[Penalties]
-    Penalties --> Override{Override}
-
-    Override -->|Yes| Force[Force NOT STABLE]
-    Override -->|No| Adjusted[Adjusted verdict]
-
-    Force        --> Report
-    Adjusted     --> Report
-
-    Report[Final report] --> End
+### CLI Mode
+```bash
+proav-shoko --cli
 ```
 
-# Mac & Linux
-Support for macOS and Linux is planned.
+**Output includes:**
+1. Platform info (OS, architecture, admin status)
+2. Full USB tree with hops/tiers
+3. Overall stability rating
+4. Per-port stability (EXTERNAL / INTERNAL)
+5. Connected displays with resolution
+6. **Interactive monitoring** - press Enter to stop, then:
+   - Choose report format: `[Enter]HTML / [P]DF / [N]o report`
+   - Report auto-opens in browser/PDF viewer
+
+### GUI Mode
+```bash
+proav-shoko
+# Or
+python run.py
+```
+
+**Features:**
+- Live USB tree with stability
+- Real-time connect/disconnect log
+- Report generation with format selection
+- Export CSV limits
+
+### Report Output
+Reports include:
+- Full USB tree with Mermaid diagrams
+- Per-port stability assessment
+- Monitoring log (if monitoring was run)
+- ⚠ Unstable devices detected during monitoring
+- Platform-specific stability limits
+- Connected displays
+- Platform notes
+
+---
+
+## Tech Stack
+
+- **Python 3.10+** - Core language
+- **usbmonitor** - USB device monitoring
+- **screeninfo** - Display information
+- **weasyprint** - PDF generation
+- **tkinter** - GUI (built-in)
+- **PyInstaller** - Cross-platform builds
+- **Mermaid.js** - Diagrams in HTML reports
+- **PowerShell** - Windows launcher
+
+---
+
+## Project Structure
+
+```
+klangche-proav-shoko/
+├── src/
+│   ├── main.py                   # Entry point (GUI/CLI)
+│   ├── main_cli.py               # CLI logic
+│   ├── gui.py                    # Tkinter GUI
+│   ├── usb_analyzer.py           # USB tree, hops, stability
+│   ├── usb_topology.py           # Platform-specific parent detection
+│   ├── display_analyzer.py       # Display detection
+│   ├── report_generator.py       # HTML/PDF reports
+│   ├── platform_utils.py         # Platform detection
+│   └── assets/
+│       ├── report.css            # Report styling
+│       └── usb_data.csv          # Platform stability limits
+├── run.py                        # Simple entry point
+├── proav-shoko.ps1               # PowerShell launcher
+├── proav-shoko_powershell.ps1    # Full PS implementation
+├── pyproject.toml
+├── README.md
+└── LICENSE
+```
+
+---
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+*Built for the ProAV community by Klangche*
