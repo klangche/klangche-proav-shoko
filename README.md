@@ -12,7 +12,6 @@ Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD envir
 
 # Download Application (offline version)
 [Download Application (offline version)](#releases)
-download, unzip and run.
 
 # Paste this into PowerShell:
 ```powershell
