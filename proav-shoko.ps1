@@ -1,22 +1,23 @@
 <#
 .SYNOPSIS
-    Shoko Launcher - USB + Display Diagnostic Tool
+    ProAV Shoko Launcher - USB + Display Diagnostic Tool
 .DESCRIPTION
-    Downloads and runs the main Shoko diagnostic script from GitHub.
-    Supports both direct execution and "irm | iex" one-liner.
+    Downloads and runs the main ProAV Shoko diagnostic script from GitHub.
+    Matches the behavior of python run.py --cli.
+    Defaults to elevated (admin) mode for maximum data collection.
 .EXAMPLE
     .\proav-shoko.ps1
-    Run from dev branch in normal mode
+    Run from main branch (default elevated)
 .EXAMPLE
-    .\proav-shoko.ps1 -Branch main
-    Run from main branch
+    .\proav-shoko.ps1 -Branch dev
+    Run from dev branch
 .EXAMPLE
-    irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/dev/proav-shoko.ps1 | iex
-    Run from dev branch via one-liner
+    irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1 | iex
+    Run via one-liner
 #>
 
 # --- Configuration (change before running) ---
-$Branch = "dev"
+$Branch = "main"
 $CsvPath = ""
 # --------------------------------------------
 # Parse command-line arguments (works with both iex and -File)
@@ -44,8 +45,8 @@ $isAdmin = $isAdmin -and $isAdmin.IsInRole([Security.Principal.WindowsBuiltInRol
 
 if (-not $isAdmin) {
     Write-Host "Limited mode - full features require Administrator rights." -ForegroundColor Yellow
-    $elevate = Read-Host "Run with administrator privileges? (y/n)"
-    if ($elevate -match '^[Yy]') {
+    $elevate = Read-Host "Run with administrator privileges? [Y/n]"
+    if ($elevate -eq '' -or $elevate -match '^[Yy]') {
         $temp = "$env:TEMP\shoko-elevated.ps1"
         Write-Verbose "Downloading main script to: $temp"
         try {
