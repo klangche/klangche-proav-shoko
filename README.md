@@ -10,17 +10,16 @@ Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD envir
 
 ### Quick Start
 
-# Download Application (offline version)
-[Download Application (offline version)](#releases)
-
-# Paste this into PowerShell:
-```powershell
-iex (irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1)
-```
-
-# Run python in terminal:
+# Multiple ways to run the app
+##Portable executable offline
+[Windows, Max Linux applications](#releases)
+## python in terminal:
 ```bash
 pip install git+https://github.com/klangche/klangche-proav-shoko.git && proav-shoko --cli
+```
+## PowerShell: (old version)
+```powershell
+iex (irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1)
 ```
 
 ---
