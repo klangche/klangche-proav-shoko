@@ -298,35 +298,37 @@ function Get-UsbTree {
     $nodes = @{}
     $hubs = @()
     $devices = @()
-    $maxDepth = 0
 
-    # Build nodes from PnP devices and query parent via DEVPKEY_Device_Parent
     foreach ($d in $allDevices) {
         $isHub = ($d.FriendlyName -like "*hub*") -or ($d.Name -like "*hub*") -or ($d.Class -eq "USBHub")
         if ($isHub) { $hubs += $d } else { $devices += $d }
 
         $name = if ($d.FriendlyName) { $d.FriendlyName } else { $d.Name }
-
-        $parentId = try {
-            $prop = $d | Get-PnpDeviceProperty -KeyName "DEVPKEY_Device_Parent" -ErrorAction Stop
-            $prop.Data
-        } catch {
-            $null
-        }
+        if (-not $name) { $name = $d.InstanceId }
 
         $nodes[$d.InstanceId] = @{
             Name = $name
             IsHub = $isHub
-            ParentId = $parentId
+            ParentId = $null
             Children = @()
         }
     }
 
-    # Attach children to parents where the parent exists in our node map
+    $ids = @($nodes.Keys)
+    foreach ($id in $ids) {
+        $parentId = try {
+            $d = Get-PnpDevice -InstanceId $id -ErrorAction Stop
+            $prop = $d | Get-PnpDeviceProperty -KeyName "DEVPKEY_Device_Parent" -ErrorAction Stop
+            if ($prop.Data) { $prop.Data.Trim() } else { $null }
+        } catch {
+            $null
+        }
+        $nodes[$id].ParentId = $parentId
+    }
+
     $roots = @()
-    foreach ($id in $nodes.Keys) {
-        $node = $nodes[$id]
-        $parentKey = $node.ParentId
+    foreach ($id in $ids) {
+        $parentKey = $nodes[$id].ParentId
         if ($parentKey -and $nodes.ContainsKey($parentKey)) {
             $nodes[$parentKey].Children += $id
         } else {
@@ -334,67 +336,48 @@ function Get-UsbTree {
         }
     }
 
-    $roots = $roots | Sort-Object Name
-
-    Write-Verbose "Found $($roots.Count) root devices (total: $($nodes.Keys.Count))"
-
     $script:treeOutput = "HOST`n"
 
-    # Find max depth for hops calculation
-    function Measure-Depth {
-        param($id, $depth)
-        if ($depth -gt $script:maxDepth) { $script:maxDepth = $depth }
-        $node = $nodes[$id]
-        if ($node.Children.Count -gt 0) {
-            foreach ($childId in $node.Children) {
-                Measure-Depth $childId ($depth + 1)
-            }
+    if ($roots.Count -eq $ids.Count -or $roots.Count -eq 0) {
+        Write-Verbose "Parent linking failed, using flat tree"
+        $hubs | Sort-Object Name | ForEach-Object {
+            $n = if ($_.FriendlyName) { $_.FriendlyName } else { $_.Name }
+            $script:treeOutput += "├── $n [HUB]`n"
         }
-    }
-    $script:maxDepth = 0
-    foreach ($id in $roots) {
-        Measure-Depth $id 0
-    }
-    $maxDepth = $script:maxDepth
-
-    function Render-Node {
-        param($id, $level, $prefixStack)
-        
-        $node = $nodes[$id]
-        $isLast = ($prefixStack[-1] -eq 1)
-        
-        $linePrefix = ""
-        for ($i = 0; $i -lt ($prefixStack.Count - 1); $i++) {
-            $linePrefix += if ($prefixStack[$i] -eq 1) { "    " } else { "│   " }
+        $devices | Sort-Object Name | ForEach-Object {
+            $n = if ($_.FriendlyName) { $_.FriendlyName } else { $_.Name }
+            $script:treeOutput += "└── $n`n"
         }
-        $linePrefix += if ($isLast) { "└── " } else { "├── " }
-        
-        $tag = if ($node.IsHub) { " [HUB]" } else { "" }
-        $script:treeOutput += "$linePrefix$($node.Name)$tag`n"
-        
-        $sortedChildren = $node.Children | Sort-Object { $nodes[$_].Name }
-        for ($i = 0; $i -lt $sortedChildren.Count; $i++) {
-            $childPrefixStack = @($prefixStack)
-            if ($prefixStack.Count -gt 0) {
-                $childPrefixStack[$childPrefixStack.Count - 1] = if ($isLast) { 1 } else { 0 }
-            }
-            $childPrefixStack += if ($i -eq $sortedChildren.Count - 1) { 1 } else { 0 }
-            Render-Node $sortedChildren[$i] ($level + 1) $childPrefixStack
-        }
-    }
-
-    if ($roots.Count -eq 0) {
-        Write-Verbose "No roots found, using flat fallback"
-        $script:treeOutput += "└── USB Controllers (Flat)`n"
+        $maxDepth = 1
     } else {
-        for ($i = 0; $i -lt $roots.Count; $i++) {
-            $stack = if ($i -eq $roots.Count - 1) { @(1) } else { @(0) }
-            Render-Node $roots[$i] 0 $stack
+        $roots = $roots | Sort-Object Name
+        $stack = foreach ($r in $roots) { @{Id=$r; Depth=0; Prefix=@(); IsLast=$false} }
+        if ($stack.Count -gt 0) { $stack[-1].IsLast = $true }
+        $treeLines = @()
+        $maxDepth = 0
+        while ($stack.Count -gt 0) {
+            $item = $stack[0]
+            $stack = $stack[1..($stack.Count - 1)]
+            $node = $nodes[$item.Id]
+            if ($item.Depth -gt $maxDepth) { $maxDepth = $item.Depth }
+            $line = ""
+            foreach ($v in $item.Prefix) { $line += if ($v) { "    " } else { "│   " } }
+            $line += if ($item.IsLast) { "└── " } else { "├── " }
+            $tag = if ($node.IsHub) { " [HUB]" } else { "" }
+            $treeLines += "$line$($node.Name)$tag"
+            $children = $node.Children | Sort-Object { $nodes[$_].Name }
+            if ($children.Count -gt 0) {
+                $childPrefix = @($item.Prefix) + @($item.IsLast)
+                $childItems = for ($i = 0; $i -lt $children.Count; $i++) {
+                    @{Id=$children[$i]; Depth=$item.Depth+1; Prefix=$childPrefix; IsLast=($i -eq $children.Count - 1)}
+                }
+                $stack = @($childItems) + $stack
+            }
         }
+        $script:treeOutput += ($treeLines -join "`n") + "`n"
     }
 
     $numTiers = $maxDepth + 1
-
     return [PSCustomObject]@{
         Tree = $script:treeOutput
         MaxHops = $maxDepth
@@ -417,11 +400,28 @@ function Get-UsbTree {
     $monitors = try {
         Get-CimInstance -Namespace root\wmi -Class WmiMonitorID -ErrorAction Stop
     } catch {
-        Write-Verbose "Failed to get monitor info: $_"
+        Write-Verbose "Failed to get WmiMonitorID: $_"
         @()
     }
     
-    if ($monitors -and $monitors.Count -gt 0) {
+    if (-not $monitors -or $monitors.Count -eq 0) {
+        Write-Verbose "WmiMonitorID returned nothing, trying PnP fallback"
+        $pnpMonitors = try {
+            Get-PnpDevice -Class Monitor -ErrorAction Stop | Where-Object Status -eq 'OK'
+        } catch { @() }
+        if ($pnpMonitors -and $pnpMonitors.Count -gt 0) {
+            $displayOutput += "└── Monitors`n"
+            foreach ($m in $pnpMonitors) {
+                $n = if ($m.FriendlyName) { $m.FriendlyName } else { $m.Name }
+                $displayOutput += "    ├── $n`n"
+                $displayOutput += "    ├── Status   : $($m.Status)`n"
+                if ($m.DeviceID -match "VID_([0-9A-F]{4})") { $displayOutput += "    ├── Vendor   : $($matches[1])`n" }
+                $displayOutput += "    └── Instance : $($m.InstanceId)`n`n"
+            }
+        } else {
+            $displayOutput += "No displays found`n"
+        }
+    } else {
         for ($i = 0; $i -lt $monitors.Count; $i++) {
             $m = $monitors[$i]
             
@@ -430,8 +430,8 @@ function Get-UsbTree {
                 $name = ($m.UserFriendlyName | ForEach-Object { [char]$_ }) -join '' 
             }
             
-            $displayOutput += "ÔööÔöÇÔöÇ $name`n"
-            $displayOutput += " Ôö£ÔöÇ Connection : "
+            $displayOutput += "╚══ $name`n"
+            $displayOutput += " ╠═ Connection : "
             
             $conn = try {
                 Get-CimInstance -Namespace root\wmi -Class WmiMonitorConnectionParams -Filter "InstanceName = '$($m.InstanceName)'" -ErrorAction Stop
@@ -449,7 +449,7 @@ function Get-UsbTree {
                 $displayOutput += "Basic mode`n"
             }
             
-            $displayOutput += " Ôö£ÔöÇ Path       : "
+            $displayOutput += " ╠═ Path       : "
             if ($m.InstanceName -match "DISPLAYPORT") { $displayOutput += "DP / DP Alt Mode`n" }
             elseif ($m.InstanceName -match "USB") { $displayOutput += "USB-C Dock / Alt Mode`n" }
             elseif ($m.InstanceName -match "TBT|THUNDER") { $displayOutput += "Thunderbolt`n" }
@@ -460,18 +460,16 @@ function Get-UsbTree {
                 if ($m.SerialNumberID -and $m.SerialNumberID -ne 0) { 
                     $serial = ($m.SerialNumberID | ForEach-Object { [char]$_ }) -join '' 
                 }
-                $displayOutput += " Ôö£ÔöÇ Size       : Basic mode`n"
-                $displayOutput += " Ôö£ÔöÇ Serial     : $serial`n"
-                $displayOutput += " ÔööÔöÇ Analytics  : Elevated`n"
+                $displayOutput += " ╠═ Size       : Basic mode`n"
+                $displayOutput += " ╠═ Serial     : $serial`n"
+                $displayOutput += " ╚═ Analytics  : Elevated`n"
             } else {
-                $displayOutput += " Ôö£ÔöÇ Size       : Basic mode`n"
-                $displayOutput += " Ôö£ÔöÇ Serial     : Basic mode`n"
-                $displayOutput += " ÔööÔöÇ Analytics  : Basic mode`n"
+                $displayOutput += " ╠═ Size       : Basic mode`n"
+                $displayOutput += " ╠═ Serial     : Basic mode`n"
+                $displayOutput += " ╚═ Analytics  : Basic mode`n"
             }
             $displayOutput += "`n"
         }
-    } else {
-        $displayOutput += "No displays found`n"
     }
     
     return $displayOutput
@@ -758,6 +756,9 @@ function Start-AnalyticsSession {
         otherErrors = 0
     }
     
+    $lastPoll = $null
+    $previousDevices = $null
+
     # Show initial log entry
     Write-Host $analyticsLog[0]
     $currentLogLine = $logStartLine + 1
@@ -797,33 +798,34 @@ function Start-AnalyticsSession {
         $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, ($statsTop + 1)
         Write-Host "Total events logged: $($counters.total)          "
         
-        # SIMULATE EVENTS FOR TESTING - REPLACE WITH REAL EVENT MONITORING
-        if ($analyticsLog.Count -eq 1 -and $startTime.AddSeconds(3) -lt (Get-Date)) {
-            if ($System.IsAdmin) {
-                $newEvents = @(
-                    "$($startTime.AddSeconds(2).ToString('HH:mm:ss.fff')) - [CONNECT] USB device connected (VID_046D/PID_0843) - Logitech Webcam",
-                    "$($startTime.AddSeconds(4).ToString('HH:mm:ss.fff')) - [DISCONNECT] USB device disconnected - Logitech Webcam",
-                    "$($startTime.AddSeconds(6).ToString('HH:mm:ss.fff')) - [CONNECT] USB device connected - Logitech Webcam"
-                )
-                $counters.connects = 2
-                $counters.disconnects = 1
-            } else {
-                $newEvents = @(
-                    "$($startTime.AddSeconds(2).ToString('HH:mm:ss.fff')) - [CONNECT] VID_046D/PID_0843",
-                    "$($startTime.AddSeconds(4).ToString('HH:mm:ss.fff')) - [DISCONNECT] VID_046D/PID_0843",
-                    "$($startTime.AddSeconds(6).ToString('HH:mm:ss.fff')) - [CONNECT] VID_046D/PID_0843"
-                )
-                $counters.connects = 2
-                $counters.disconnects = 1
-            }
-            
-            foreach ($event in $newEvents) {
-                $analyticsLog += $event
+        # Poll for USB device changes every 2 seconds
+        if (([DateTime]::Now - $startTime).TotalSeconds -ge 2 -and (([DateTime]::Now - $lastPoll).TotalSeconds -ge 2 -or -not $lastPoll)) {
+            $lastPoll = [DateTime]::Now
+            $currentDevices = try {
+                @(Get-PnpDevice -Class USB -ErrorAction SilentlyContinue | Where-Object Status -eq 'OK' | ForEach-Object { $_.InstanceId })
+            } catch { @() }
+            if (-not $previousDevices) { $previousDevices = $currentDevices }
+            $newDevices = $currentDevices | Where-Object { $previousDevices -notcontains $_ }
+            $removedDevices = $previousDevices | Where-Object { $currentDevices -notcontains $_ }
+            foreach ($id in $newDevices) {
+                $ts = (Get-Date).ToString('HH:mm:ss.fff')
+                $analyticsLog += "$ts - [CONNECT] $id"
                 $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $currentLogLine
-                Write-Host $event
+                Write-Host "$ts - [CONNECT] $id"
                 $currentLogLine++
+                $counters.connects++
+                $counters.total++
             }
-            $counters.total = 3
+            foreach ($id in $removedDevices) {
+                $ts = (Get-Date).ToString('HH:mm:ss.fff')
+                $analyticsLog += "$ts - [DISCONNECT] $id"
+                $Host.UI.RawUI.CursorPosition = New-Object System.Management.Automation.Host.Coordinates 0, $currentLogLine
+                Write-Host "$ts - [DISCONNECT] $id"
+                $currentLogLine++
+                $counters.disconnects++
+                $counters.total++
+            }
+            $previousDevices = $currentDevices
         }
         
         Start-Sleep -Milliseconds 500
