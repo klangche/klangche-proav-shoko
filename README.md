@@ -11,6 +11,7 @@ Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD envir
 ### Quick Start
 
 # Download Application (offline version)
+[ownload Application (offline version)](#releases)
 (https://github.com/klangche/klangche-proav-shoko/releases) —
 unzip and run.
 
