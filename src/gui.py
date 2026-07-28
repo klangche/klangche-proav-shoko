@@ -98,31 +98,32 @@ class ProAVShokoGUI:
         # Start log updates
         self._update_log()
 
-        # Start analysis immediately
-        self.root.after(500, self._start_analysis)
-
     def _build_gui(self):
         """Build the interface."""
         # Main frame
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # === TOP: Reset button ===
+        # === TOP: Start / Reset buttons ===
         top_frame = ttk.Frame(main_frame)
         top_frame.pack(fill=tk.X, pady=(0, 10))
 
         # Platform info
         self.platform_label = ttk.Label(
             top_frame,
-            text="Loading platform info...",
+            text="Click Start to begin",
             font=('Segoe UI', 10),
             foreground=self.colors['blue']
         )
         self.platform_label.pack(side=tk.LEFT)
 
-        # Reset button
-        reset_btn = tk.Button(
-            top_frame,
+        # Buttons on the right
+        btn_right_frame = ttk.Frame(top_frame)
+        btn_right_frame.pack(side=tk.RIGHT)
+
+        # Reset button (hidden until analysis starts)
+        self.reset_btn = tk.Button(
+            btn_right_frame,
             text="Reset",
             font=('Segoe UI', 10, 'bold'),
             bg=self.colors['blue'],
@@ -132,7 +133,20 @@ class ProAVShokoGUI:
             command=self._reset_analysis,
             cursor='hand2'
         )
-        reset_btn.pack(side=tk.RIGHT)
+
+        # Start Analysis button
+        self.start_btn = tk.Button(
+            btn_right_frame,
+            text="Start Analysis",
+            font=('Segoe UI', 10, 'bold'),
+            bg='#00cc66',
+            fg='white',
+            padx=15,
+            pady=5,
+            command=self._on_start_clicked,
+            cursor='hand2'
+        )
+        self.start_btn.pack(side=tk.RIGHT, padx=(10, 0))
 
         # === MIDDLE: Tree (left, ~70%) + Log (right, ~30%), resizable ===
         self.middle_paned = ttk.PanedWindow(main_frame, orient=tk.HORIZONTAL)
@@ -257,6 +271,12 @@ class ProAVShokoGUI:
         elif not should_show and self.log_panel_visible:
             self.middle_paned.forget(self.right_frame)
             self.log_panel_visible = False
+
+    def _on_start_clicked(self):
+        """Handle Start button click."""
+        self.start_btn.pack_forget()
+        self.reset_btn.pack(side=tk.RIGHT)
+        self._start_analysis()
 
     def _start_analysis(self):
         """Start the analysis in a background thread."""

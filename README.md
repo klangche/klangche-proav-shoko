@@ -6,6 +6,22 @@ Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD envir
 [![Releases](https://img.shields.io/github/v/release/klangche/klangche-proav-shoko?label=download)](https://github.com/klangche/klangche-proav-shoko/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Python%20%7C%20PowerShell-lightgrey)](https://github.com/klangche/klangche-proav-shoko)
+[![SemVer](https://img.shields.io/badge/versioning-SemVer%202.0.0-blue)](VERSIONING.md)
+
+### Quick Start
+
+[⬇️ Download portable .exe](https://github.com/klangche/klangche-proav-shoko/releases) —
+unzip and run.
+
+```powershell
+# Paste this into PowerShell:
+iex (irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1)
+```
+
+```bash
+# Run this in terminal:
+pip install git+https://github.com/klangche/klangche-proav-shoko.git && proav-shoko --cli
+```
 
 ---
 
@@ -18,6 +34,7 @@ Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD envir
 - [Usage](#usage)
 - [Tech Stack](#tech-stack)
 - [Building From Source](#building-from-source)
+- [Versioning](VERSIONING.md)
 - [License](#license)
 
 ---
@@ -74,7 +91,7 @@ There are three ways to use ProAV Shoko:
 
 ### 1. Portable Executable (.exe) — Windows
 
-Download `ProAV-Shoko-windows-x64.zip` from the **[Releases page](https://github.com/klangche/klangche-proav-shoko/releases)**.  
+Download the latest `ProAV-Shoko-windows-x64.zip` from the **[Releases page](https://github.com/klangche/klangche-proav-shoko/releases)**.  
 Unzip and run either:
 
 - `proav-shoko.exe` — CLI (command-line) mode
