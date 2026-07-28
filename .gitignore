@@ -416,3 +416,6 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Auto-generated icon (from shoko-icon.png)
+src/resources/shoko-icon.ico

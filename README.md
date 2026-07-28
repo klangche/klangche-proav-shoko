@@ -172,11 +172,13 @@ klangche-proav-shoko/
 │   ├── report_generator.py       # HTML/PDF reports
 │   ├── platform_utils.py         # Platform detection
 │   ├── resources/
-│   │   ├── shoko-icon.png        # App icon (PNG)
-│   │   └── shoko-icon.ico        # App icon (Windows)
+│   │   ├── shoko-icon.png        # App icon (source)
+│   │   └── shoko-icon.ico        # Auto-generated from .png
 │   └── assets/
 │       ├── report.css            # Report styling
 │       └── usb_data.csv          # Platform stability limits
+├── scripts/
+│   └── generate_icon.py          # Auto-generates .ico from .png
 ├── proav-shoko.ps1               # PowerShell launcher
 ├── proav-shoko_powershell.ps1    # Full PS implementation
 ├── run.py                        # Python entry point
