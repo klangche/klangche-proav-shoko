@@ -91,11 +91,11 @@ There are three ways to use ProAV Shoko:
 
 ### 1. Portable Executable (.exe) — Windows
 
-Download the latest `ProAV-Shoko-windows-x64.zip` from the **[Releases page](https://github.com/klangche/klangche-proav-shoko/releases)**.  
-Unzip and run either:
+Download the latest release from the **[Releases page](https://github.com/klangche/klangche-proav-shoko/releases)**.  
+Unzip and run `ProAV Shoko <version>.exe`.
 
-- `proav-shoko.exe` — CLI (command-line) mode
-- `ProAV Shoko.exe` — GUI mode
+- Double-click → GUI mode
+- Run from terminal with `--cli` → CLI mode
 
 No installation or Python required.
 

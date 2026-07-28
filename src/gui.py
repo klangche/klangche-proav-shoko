@@ -134,6 +134,19 @@ class ProAVShokoGUI:
             cursor='hand2'
         )
 
+        # Stop button (hidden until monitoring starts)
+        self.stop_btn = tk.Button(
+            btn_right_frame,
+            text="Stop",
+            font=('Segoe UI', 10, 'bold'),
+            bg=self.colors['orange'],
+            fg='white',
+            padx=15,
+            pady=5,
+            command=self._on_stop_clicked,
+            cursor='hand2'
+        )
+
         # Start Analysis button
         self.start_btn = tk.Button(
             btn_right_frame,
@@ -275,8 +288,15 @@ class ProAVShokoGUI:
     def _on_start_clicked(self):
         """Handle Start button click."""
         self.start_btn.pack_forget()
+        self.stop_btn.pack(side=tk.RIGHT, padx=(10, 0))
         self.reset_btn.pack(side=tk.RIGHT)
         self._start_analysis()
+
+    def _on_stop_clicked(self):
+        """Handle Stop button click — stops live monitoring, keeps results."""
+        self._stop_monitoring()
+        self.stop_btn.pack_forget()
+        self.status_label.config(text="Stopped", foreground=self.colors['orange'])
 
     def _start_analysis(self):
         """Start the analysis in a background thread."""
@@ -544,6 +564,8 @@ class ProAVShokoGUI:
         """Reset and restart the analysis."""
         if messagebox.askyesno("Reset", "Do you want to reset and restart the analysis?"):
             self._stop_monitoring()
+            self.stop_btn.pack_forget()
+            self.start_btn.pack(side=tk.RIGHT, padx=(10, 0))
             self._start_analysis()
 
     def _on_close(self):
