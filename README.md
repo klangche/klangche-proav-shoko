@@ -12,7 +12,7 @@ Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD envir
 
 # Multiple ways to run the app
 
-[Windows, Max Linux applications](#releases)
+[Windows, Max Linux applications](https://github.com/klangche/klangche-proav-shoko/releases)
 ## python in terminal:
 ```bash
 pip install git+https://github.com/klangche/klangche-proav-shoko.git && proav-shoko --cli
