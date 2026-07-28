@@ -11,7 +11,7 @@ Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD envir
 ### Quick Start
 
 # Multiple ways to run the app
-##Portable executable offline
+
 [Windows, Max Linux applications](#releases)
 ## python in terminal:
 ```bash
