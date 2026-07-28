@@ -8,19 +8,22 @@ Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD envir
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Python%20%7C%20PowerShell-lightgrey)](https://github.com/klangche/klangche-proav-shoko)
 [![SemVer](https://img.shields.io/badge/versioning-SemVer%202.0.0-blue)](VERSIONING.md)
 
-### Quick Start
+---
 
-# Multiple ways to run the app
-## Windows, Max Linux offline applications
-[Download](https://github.com/klangche/klangche-proav-shoko/releases)
-## python in terminal:
+## Quick Start
+
+[Download](https://github.com/klangche/klangche-proav-shoko/releases) the latest release — Windows `.exe`, no installation required.
+
+**Python (any platform)**
 ```bash
 pip install git+https://github.com/klangche/klangche-proav-shoko.git && proav-shoko --cli
 ```
-## PowerShell: (old version)
+
+**PowerShell (Windows)**
 ```powershell
 iex (irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1)
 ```
+Copy and paste into PowerShell.
 
 ---
 
@@ -29,10 +32,7 @@ iex (irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/pr
 - [Overview](#overview)
 - [Why ProAV Shoko?](#why-proav-shoko)
 - [Features](#features)
-- [How to Run](#how-to-run)
-- [Usage](#usage)
 - [Tech Stack](#tech-stack)
-- [Building From Source](#building-from-source)
 - [Versioning](VERSIONING.md)
 - [License](#license)
 
@@ -84,83 +84,6 @@ In modern meeting rooms we often see:
 
 ---
 
-## How to Run
-
-There are three ways to use ProAV Shoko:
-
-### 1. Portable Executable (.exe) — Windows
-
-Download the latest release from the **[Releases page](https://github.com/klangche/klangche-proav-shoko/releases)**.  
-Unzip and run `ProAV Shoko <version>.exe`.
-
-- Double-click → GUI mode
-- Run from terminal with `--cli` → CLI mode
-
-No installation or Python required.
-
-### 2. Python (run from source) — any platform
-
-```bash
-pip install git+https://github.com/klangche/klangche-proav-shoko.git
-proav-shoko --cli
-```
-
-Or run directly from a clone:
-
-```bash
-python run.py         # GUI mode
-python run.py --cli   # CLI mode
-```
-
-### 3. PowerShell Script (.ps1) — Windows
-
-```powershell
-iex (irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1)
-```
-
-No Python required — runs on any Windows machine with PowerShell 5.1+.
-
----
-
-## Usage
-
-### CLI Mode
-```bash
-proav-shoko --cli
-```
-
-**Output includes:**
-1. Platform info (OS, architecture, admin status)
-2. Full USB tree with hops/tiers
-3. Overall stability rating
-4. Per-port stability (EXTERNAL / INTERNAL)
-5. Connected displays with resolution
-6. **Interactive monitoring** - press Enter to stop, then:
-   - Choose report format: `[Enter]HTML / [P]DF / [N]o report`
-   - Report auto-opens in browser/PDF viewer
-
-### GUI Mode
-```bash
-proav-shoko
-```
-
-**Features:**
-- Live USB tree with stability
-- Real-time connect/disconnect log
-- Report generation with format selection
-
-### Report Output
-Reports include:
-- Full USB tree with Mermaid diagrams
-- Per-port stability assessment
-- Monitoring log (if monitoring was run)
-- ⚠ Unstable devices detected during monitoring
-- Platform-specific stability limits
-- Connected displays
-- Platform notes
-
----
-
 ## Tech Stack
 
 - **Python 3.10+** - Core language
@@ -206,18 +129,6 @@ klangche-proav-shoko/
 ├── LICENSE
 └── .github/workflows/build.yml   # CI
 ```
-
----
-
-## Building From Source (Windows)
-
-```bash
-pip install -e .[dev]
-pip install pyinstaller
-python build.py --build
-```
-
-The compiled `.exe` files will be in the `dist/` folder.
 
 ---
 
