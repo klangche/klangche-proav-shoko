@@ -14,9 +14,10 @@ APP_NAME = "ProAV Shoko"
 APP_VERSION = "0.1.0-alpha.0"
 MAIN_SCRIPT = "src/main.py"
 
-# Data files to include
+# Data files to include (baked into the exe)
 DATAS = [
     ("src/assets/report.css", "assets"),
+    ("src/assets/usb_data.csv", "assets"),
 ]
 
 # Hidden imports
