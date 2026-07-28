@@ -1,6 +1,7 @@
 """
 ProAV Shoko - Main entry point
-Chooses between GUI and CLI based on arguments
+CLI by default when running from source (python run.py).
+GUI by default when running as packaged app (exe/.app).
 """
 
 import sys
@@ -9,26 +10,32 @@ import argparse
 
 def main():
     """Main function - starts the GUI or the CLI."""
+    is_frozen = getattr(sys, 'frozen', False)
+
     parser = argparse.ArgumentParser(
         description='ProAV Shoko - USB analysis tool for AV environments'
     )
-    parser.add_argument(
-        '--cli',
-        action='store_true',
-        help='Run in CLI mode (without GUI)'
-    )
+    if is_frozen:
+        parser.add_argument(
+            '--cli',
+            action='store_true',
+            help='Run in CLI mode (default is GUI when packaged)'
+        )
+    else:
+        parser.add_argument(
+            '--gui',
+            action='store_true',
+            help='Run in GUI mode (default is CLI)'
+        )
     parser.add_argument(
         '--csv-path',
         help='Path to custom USB data file (CSV format, e.g. usb_data.csv)'
     )
     args = parser.parse_args()
 
-    if args.cli:
-        # CLI mode
-        from src.main_cli import main as cli_main
-        cli_main(args.csv_path)
-    else:
-        # GUI mode (default)
+    want_gui = args.gui if not is_frozen else not args.cli
+
+    if want_gui:
         try:
             from src.gui import ProAVShokoGUI
             import tkinter as tk
@@ -37,8 +44,10 @@ def main():
             root.mainloop()
         except ImportError as e:
             print(f"[!] Could not start GUI: {e}")
-            print("   Try --cli to run in the terminal.")
             sys.exit(1)
+    else:
+        from src.main_cli import main as cli_main
+        cli_main(args.csv_path)
 
 
 if __name__ == "__main__":

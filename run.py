@@ -4,9 +4,9 @@ ProAV Shoko - entry point for running from source and for packaged
 (PyInstaller) builds.
 
 Run this from the repository root:
-    python run.py          # GUI mode
-    python run.py --cli    # CLI mode
-    python run.py --cli --csv-path path/to/usb_data.csv  # CLI with custom limits
+    python run.py                                     # CLI mode (default)
+    python run.py --gui                               # GUI mode
+    python run.py --csv-path path/to/usb_data.csv     # CLI with custom limits
 """
 
 import sys
