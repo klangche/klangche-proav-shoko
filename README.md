@@ -5,7 +5,7 @@ Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD envir
 
 [![Releases](https://img.shields.io/github/v/release/klangche/klangche-proav-shoko?label=download)](https://github.com/klangche/klangche-proav-shoko/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20PowerShell-lightgrey)](https://github.com/klangche/klangche-proav-shoko)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Python%20%7C%20PowerShell-lightgrey)](https://github.com/klangche/klangche-proav-shoko)
 
 ---
 
@@ -70,24 +70,39 @@ In modern meeting rooms we often see:
 
 ## How to Run
 
-### Portable Executables (Windows / macOS / Linux)
+There are three ways to use ProAV Shoko:
 
-Download the latest build for your platform from the **[Releases page](https://github.com/klangche/klangche-proav-shoko/releases)**. No installation required — unzip and run.
+### 1. Portable Executable (.exe) — Windows
 
-### PowerShell Script (Windows)
+Download `ProAV-Shoko-windows-x64.zip` from the **[Releases page](https://github.com/klangche/klangche-proav-shoko/releases)**.  
+Unzip and run either:
+
+- `proav-shoko.exe` — CLI (command-line) mode
+- `ProAV Shoko.exe` — GUI mode
+
+No installation or Python required.
+
+### 2. Python (run from source) — any platform
+
+```bash
+pip install git+https://github.com/klangche/klangche-proav-shoko.git
+proav-shoko --cli
+```
+
+Or run directly from a clone:
+
+```bash
+python run.py         # GUI mode
+python run.py --cli   # CLI mode
+```
+
+### 3. PowerShell Script (.ps1) — Windows
 
 ```powershell
 iex (irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1)
 ```
 
 No Python required — runs on any Windows machine with PowerShell 5.1+.
-
-### Python (any platform)
-
-```bash
-pip install git+https://github.com/klangche/klangche-proav-shoko.git
-proav-shoko --cli
-```
 
 ---
 
@@ -156,6 +171,9 @@ klangche-proav-shoko/
 │   ├── display_analyzer.py       # Display detection
 │   ├── report_generator.py       # HTML/PDF reports
 │   ├── platform_utils.py         # Platform detection
+│   ├── resources/
+│   │   ├── shoko-icon.png        # App icon (PNG)
+│   │   └── shoko-icon.ico        # App icon (Windows)
 │   └── assets/
 │       ├── report.css            # Report styling
 │       └── usb_data.csv          # Platform stability limits
@@ -170,6 +188,18 @@ klangche-proav-shoko/
 ├── LICENSE
 └── .github/workflows/build.yml   # CI
 ```
+
+---
+
+## Building From Source (Windows)
+
+```bash
+pip install -e .[dev]
+pip install pyinstaller
+python build.py --build
+```
+
+The compiled `.exe` files will be in the `dist/` folder.
 
 ---
 

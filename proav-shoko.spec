@@ -2,10 +2,12 @@
 
 import sys
 import os
-from pathlib import Path
+
+# SPEC is provided by PyInstaller and contains the spec file path
+BASE_DIR = os.path.dirname(os.path.abspath(SPEC))
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+sys.path.insert(0, os.path.join(BASE_DIR, "src"))
 
 # --- Configuration ---
 APP_NAME = "ProAV Shoko"
@@ -52,39 +54,14 @@ EXCLUDES = [
     "coverage",
 ]
 
-# Platform-specific options
-if sys.platform == "darwin":
-    # macOS app bundle
-    APP_BUNDLE = True
-    ICON_FILE = None  # Add .icns file if available
-    PLIST = {
-        "CFBundleName": APP_NAME,
-        "CFBundleDisplayName": APP_NAME,
-        "CFBundleIdentifier": "com.klangche.proav-shoko",
-        "CFBundleVersion": APP_VERSION,
-        "CFBundleShortVersionString": APP_VERSION,
-        "NSHighResolutionCapable": True,
-        "LSMinimumSystemVersion": "10.15",
-    }
-    ICON = ICON_FILE
-elif sys.platform == "win32":
-    # Windows
-    APP_BUNDLE = False
-    ICON_FILE = None  # Add .ico file if available
-    PLIST = {}
-    ICON = ICON_FILE
-else:
-    # Linux
-    APP_BUNDLE = False
-    ICON_FILE = None
-    PLIST = {}
-    ICON = ICON_FILE
+# Icon file for Windows
+ICON_FILE = os.path.join(BASE_DIR, "src", "resources", "shoko-icon.ico")
 
 
 # Build Analysis
 a = Analysis(
     [MAIN_SCRIPT],
-    pathex=[str(Path(__file__).parent)],
+    pathex=[BASE_DIR],
     binaries=[],
     datas=DATAS,
     hiddenimports=HIDDEN_IMPORTS,
@@ -151,13 +128,13 @@ gui_exe = EXE(
     icon=ICON_FILE,
 )
 
-# --- macOS App Bundle ---
-if sys.platform == "darwin" and APP_BUNDLE:
-    app = BUNDLE(
-        gui_exe,
-        name=f"{APP_NAME}.app",
-        icon=ICON_FILE,
-        bundle_identifier="com.klangche.proav-shoko",
-        version=APP_VERSION,
-        info_plist=PLIST,
-    )
+# macOS App Bundle - paused (WIP)
+# if sys.platform == "darwin":
+#     app = BUNDLE(
+#         gui_exe,
+#         name=f"{APP_NAME}.app",
+#         icon=ICON_FILE,
+#         bundle_identifier="com.klangche.proav-shoko",
+#         version=APP_VERSION,
+#         info_plist={},
+#     )
