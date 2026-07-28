@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.join(BASE_DIR, "src"))
 
 # --- Configuration ---
 APP_NAME = "ProAV Shoko"
-APP_VERSION = "1.0.0"
+APP_VERSION = "0.1.0-alpha.1"
 MAIN_SCRIPT = "src/main.py"
 
 # Data files to include
@@ -81,15 +81,15 @@ a.datas = [x for x in a.datas if "__pycache__" not in x[0]]
 # PYZ
 pyz = PYZ(a.pure, a.zipped_data, cipher=None)
 
-# --- CLI Executable ---
-cli_exe = EXE(
+# --- Single Executable (GUI + CLI via --cli flag) ---
+exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
     a.zipfiles,
     a.datas,
     [],
-    name="proav-shoko",
+    name=f"ProAV Shoko {APP_VERSION}",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -97,29 +97,6 @@ cli_exe = EXE(
     upx_exclude=[],
     runtime_tmpdir=None,
     console=True,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-)
-
-# --- GUI Executable ---
-gui_exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    [],
-    name="ProAV Shoko",
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
