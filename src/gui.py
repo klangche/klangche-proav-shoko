@@ -1,9 +1,13 @@
+#!/usr/bin/env python3
 """
-GUI for ProAV Shoko - live overview with tree and log
+ProAV Shoko - USB Detective GUI
+
+Clean, simple GUI that shows USB tree and live logs.
+Matches CLI format exactly with modern look.
 """
 
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox
 import threading
 import queue
 import sys
@@ -67,7 +71,7 @@ class ProAVShokoGUI:
         self.log_panel_visible = True
         self.csv_path = csv_path
 
-        # Modern color scheme
+        # Simple color scheme
         self.colors = {
             'bg': '#1e293b',
             'bg_light': '#334155',
@@ -79,15 +83,11 @@ class ProAVShokoGUI:
             'error': '#ef4444',
             'text': '#f1f5f9',
             'text_secondary': '#94a3b8',
-            'border': '#334155',
-            'green': '#00cc66',
-            'yellow': '#ffcc00',
-            'orange': '#ff8800',
-            'red': '#ff3333',
-            'blue': '#00d4ff'
+            'green': '#22c55e',
+            'orange': '#fb923c',
+            'blue': '#3b82f6'
         }
 
-        # Set modern theme - simplified for compatibility
         self.root.configure(bg=self.colors['bg'])
 
         # Build GUI
@@ -103,7 +103,7 @@ class ProAVShokoGUI:
         self._update_log()
 
     def _build_gui(self):
-        """Build the interface using modern customtkinter themes."""
+        """Build the GUI interface."""
         # Main container
         main_frame = tk.Frame(self.root, bg=self.colors['bg'])
         main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
@@ -223,7 +223,7 @@ class ProAVShokoGUI:
 
         self.log_text = tk.Text(
             log_frame,
-            bg=self.colors['bg_dark'],
+            bg=self.colors['bg'],
             fg=self.colors['text'],
             font=('Consolas', 10),
             wrap=tk.WORD,
@@ -232,7 +232,7 @@ class ProAVShokoGUI:
         )
         self.log_text.pack(fill=tk.BOTH, expand=True)
 
-        self.log_text.tag_configure('event_connect', foreground=self.colors['success'])
+        self.log_text.tag_configure('event_connect', foreground=self.colors['green'])
         self.log_text.tag_configure('event_disconnect', foreground=self.colors['orange'])
         self.log_text.tag_configure('timestamp', foreground=self.colors['text_secondary'])
 
@@ -269,7 +269,7 @@ class ProAVShokoGUI:
         report_btn.pack(side=tk.LEFT)
 
     def _on_window_resize(self, event):
-        """Hide the live log panel when the window gets narrow, show it again otherwise."""
+        """Handle window resize to hide/show the log panel."""
         if event.widget != self.root:
             return
 
@@ -277,11 +277,10 @@ class ProAVShokoGUI:
         should_show = width >= NARROW_WINDOW_THRESHOLD
 
         if should_show and not self.log_panel_visible:
-            # Switch visibility of right frame using grid/pack differently
             self.right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(0, 0))
+            self.left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
             self.log_panel_visible = True
         elif not should_show and self.log_panel_visible:
-            # Hide right frame
             self.right_frame.pack_forget()
             self.log_panel_visible = False
 
@@ -350,9 +349,7 @@ class ProAVShokoGUI:
                 text_color=self.colors['success']
             ))
 
-            # 4. Start live connect/disconnect monitoring. This keeps
-            # running in usbmonitor's own background thread until
-            # stop_live_monitoring() is called (on reset or window close).
+            # 4. Start live connect/disconnect monitoring.
             self.usb_analyzer.start_live_monitoring(
                 on_connect=self._on_device_connect,
                 on_disconnect=self._on_device_disconnect,
@@ -366,61 +363,6 @@ class ProAVShokoGUI:
             self.root.after(0, lambda m=err_msg: self.status_label.configure(
                 text=f"Error: {m}",
                 text_color=self.colors['error']
-            ))
-        finally:
-            self.is_running = False
-            if hasattr(sys.stdout, 'original_stdout'):
-                sys.stdout = sys.stdout.original_stdout
-        """Run the initial analysis in the background, then start live monitoring."""
-        try:
-            # 1. Platform
-            self.platform_info = PlatformUtils.get_platform_info()
-            print("=" * 60)
-            print("  KLANGCHE PROAV SHOKO - USB DETECTIVE")
-            print("=" * 60)
-            print(f"\n[+] Platform: {self.platform_info['os']} {self.platform_info['version']}")
-            print(f"[+] Architecture: {self.platform_info['architecture']}")
-            if self.platform_info['is_apple_silicon']:
-                print("[+] Apple Silicon detected!")
-
-            self.root.after(0, self._update_platform_label)
-
-            # 2. USB analysis - load limits from custom data file if specified, otherwise default
-            self.usb_analyzer = USBAnalyzer(self.csv_path) if self.csv_path else USBAnalyzer()
-            if self.csv_path:
-                print(f"[+] Loaded limits from: {self.csv_path}")
-            elif Path("usb_data.csv").exists():
-                print(f"[+] Loaded limits from: usb_data.csv")
-
-            print("\n[+] Scanning USB devices...")
-            self._refresh_tree_and_stability()
-
-            # 3. Display information
-            print("\n[+] Scanning displays...")
-            self.display_analyzer = DisplayAnalyzer()
-
-            print("\n[+] Initial scan complete. Starting live monitoring...")
-            self.root.after(0, lambda: self.status_label.config(
-                text="Monitoring (live)",
-                foreground=self.colors['green']
-            ))
-
-            # 4. Start live connect/disconnect monitoring. This keeps
-            # running in usbmonitor's own background thread until
-            # stop_live_monitoring() is called (on reset or window close).
-            self.usb_analyzer.start_live_monitoring(
-                on_connect=self._on_device_connect,
-                on_disconnect=self._on_device_disconnect,
-                check_every_seconds=0.1
-            )
-            self.is_monitoring = True
-
-        except Exception as e:
-            err_msg = str(e)
-            print(f"\n[!] Error: {err_msg}")
-            self.root.after(0, lambda m=err_msg: self.status_label.config(
-                text=f"Error: {m}",
-                foreground=self.colors['red']
             ))
         finally:
             self.is_running = False
@@ -476,17 +418,7 @@ class ProAVShokoGUI:
 
     def _update_tree_display(self, usb_tree, hops_data, stability, displays):
         """Update the tree display to match CLI exactly."""
-        self.tree_text.delete(1.0, tk.END)
-
-        # Overall summary
-        overall = stability.get('overall_worst', 'STABLE')
-        mh = stability.get('max_hops', 0)
-        mt = stability.get('max_tiers', 0)
-        mhub = stability.get('max_hubs', 0)
-        total = stability.get('total_endpoints', 0)
-        ep_label = "endpoint" if total == 1 else "endpoints"
-        self.tree_text.insert(tk.END, f"Overall: {overall} ({total} {ep_label}, hops={mh}, tiers={mt}, hubs={mhub})\n")
-        self.tree_text.insert(tk.END, "\n")
+        self.tree_text.delete('0.0', tk.END)
 
         # VERDICTS
         self.tree_text.insert(tk.END, "=" * 31 + "VERDICT" + "=" * 31)
@@ -656,26 +588,6 @@ class ProAVShokoGUI:
         finally:
             self.root.after(100, self._update_log)
 
-    def _refresh_tree_and_stability(self):
-        """Re-scan the USB tree, recompute hops/tiers/stability and update the GUI.
-        Called on startup and again after every connect/disconnect event."""
-        usb_tree = self.usb_analyzer.build_tree()
-        hops_data = self.usb_analyzer.calculate_hops_and_tiers(usb_tree)
-        stability = self.usb_analyzer.assess_stability(hops_data)
-
-        displays = self.display_analyzer.get_display_info() if self.display_analyzer else []
-
-        self.current_data = {
-            'usb_tree': usb_tree,
-            'hops_data': hops_data,
-            'stability': stability,
-            'displays': displays,
-            'platform_info': self.platform_info
-        }
-
-        self.root.after(0, self._update_tree_display, usb_tree, hops_data, stability, displays)
-        print(self.usb_analyzer.get_stability_summary(stability))
-
     def _stop_monitoring(self):
         """Stop live USB monitoring if it's running."""
         if self.is_monitoring and self.usb_analyzer:
@@ -694,65 +606,6 @@ class ProAVShokoGUI:
         """Stop the background monitoring thread and close the window."""
         self._stop_monitoring()
         self.root.destroy()
-
-    def save_logs(self, path):
-        """Save analysis logs to a file."""
-        try:
-            with open(path, 'w', encoding='utf-8') as f:
-                # Add header
-                f.write(f"ProAV Shoko Log - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write("=" * 60 + "\n")
-                
-                # Platform info
-                f.write(f"Platform: {self.platform_info['os']} {self.platform_info['version']}\n")
-                f.write(f"Architecture: {self.platform_info['architecture']}\n")
-                if self.platform_info['is_apple_silicon']:
-                    f.write("Apple Silicon: Yes\n")
-                
-                # Tree and logs
-                f.write("\n" + "=" * 60 + "\n")
-                f.write("USB TREE STRUCTURE\n")
-                f.write("=" * 60 + "\n")
-                if self.current_data and self.current_data['usb_tree']:
-                    self._render_tree_to_file(f, self.current_data['usb_tree'], 0)
-                else:
-                    f.write("No USB devices found.\n")
-                
-                f.write("\n" + "=" * 60 + "\n")
-                f.write("STABILITY ASSESSMENT\n")
-                f.write("=" * 60 + "\n")
-                if self.current_data and 'stability' in self.current_data:
-                    f.write(self.usb_analyzer.get_stability_summary(self.current_data['stability']))
-                
-                f.write("\n" + "=" * 60 + "\n")
-                f.write("DISPLAY INFORMATION\n")
-                f.write("=" * 60 + "\n")
-                if self.current_data and self.current_data.get('displays'):
-                    for display in self.current_data['displays']:
-                        primary = " (Primary)" if display.get('is_primary', False) else ""
-                        f.write(f"  {display['resolution']}  {display['name']}{primary}\n")
-                elif self.current_data and not self.current_data.get('displays'):
-                    f.write("  No displays found.\n")
-                
-                print(f"[+] Log saved: {path}")
-        except Exception as e:
-            print(f"[!] Could not save log: {e}")
-
-    def _render_tree_to_file(self, f, tree, level):
-        """Recursively write USB tree to file."""
-        indent = "  " * level
-        for node in tree:
-            is_hub = node.get('is_hub', False)
-            hub_tag = " [HUB]" if is_hub else ""
-            hops = node.get('hops', 0)
-            is_int = " [INTERNAL]" if node.get('is_internal') else ""
-
-            label = self._node_label(node)
-            line = f"{indent}{label}{hub_tag}{is_int}  hops={hops}\n"
-            f.write(line)
-
-            if node.get('children'):
-                self._render_tree_to_file(f, node['children'], level + 1)
 
     def _export_csv_limits(self):
         """Export hop and tier limits as CSV."""
@@ -812,7 +665,7 @@ class ProAVShokoGUI:
         title_label.pack(pady=(15, 5))
 
         # Format selection
-        format_frame = ttk.LabelFrame(dialog, text="Report Format", padding=15)
+        format_frame = tk.LabelFrame(dialog, text="Report Format", padding=15)
         format_frame.pack(fill=tk.X, padx=20, pady=10)
 
         self.report_format_var = tk.StringVar(value='html')
@@ -845,7 +698,7 @@ class ProAVShokoGUI:
         pdf_radio.pack(anchor=tk.W, pady=2)
 
         # Port selection
-        port_frame = ttk.LabelFrame(dialog, text="Port Selection", padding=15)
+        port_frame = tk.LabelFrame(dialog, text="Port Selection", padding=15)
         port_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
 
         # Create checkboxes for ports
@@ -876,7 +729,7 @@ class ProAVShokoGUI:
         usb_tree = self.current_data['usb_tree']
         root_orig = usb_tree[0] if usb_tree else {}
         orig_children = list(root_orig.get('children', []))
-        
+
         external_ports = []
         for i, port in enumerate(ports_data):
             if i < len(orig_children):
@@ -891,7 +744,7 @@ class ProAVShokoGUI:
             hops = port.get('max_hops', 0)
             tiers = port.get('max_tiers', 0)
             hubs = port.get('external_hubs', 0)
-            
+
             port_var = tk.BooleanVar(value=False)
             self.port_vars[label] = port_var
 
@@ -913,7 +766,7 @@ class ProAVShokoGUI:
             cb.pack(side=tk.LEFT)
 
         # Buttons
-        btn_frame = ttk.Frame(dialog)
+        btn_frame = tk.Frame(dialog)
         btn_frame.pack(fill=tk.X, padx=20, pady=15)
 
         generate_btn = tk.Button(
@@ -945,23 +798,23 @@ class ProAVShokoGUI:
     def _do_generate_report(self, dialog):
         """Generate the report based on dialog selections."""
         format_type = self.report_format_var.get()
-        
+
         # Collect selected ports
         selected_ports = []
         for label, var in self.port_vars.items():
             if var.get():
                 selected_ports.append(label)
-        
+
         if not selected_ports:
             selected_ports = ['Full']
-        
+
         dialog.destroy()
 
         # Ask for save location
         ext = '.html' if format_type == 'html' else '.pdf'
         default_name = f"proav-shoko-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}{ext}"
         file_types = [("HTML files", "*.html")] if format_type == 'html' else [("PDF files", "*.pdf")]
-        
+
         file_path = filedialog.asksaveasfilename(
             defaultextension=ext,
             filetypes=file_types + [("All files", "*.*")],
@@ -1028,17 +881,6 @@ class ProAVShokoGUI:
             messagebox.showerror("Error", f"Could not generate report: {e}")
             self.status_label.config(text=f"Error: {e}", foreground=self.colors['red'])
 
-
-    def _save_logs_dialog(self):
-        """Show a dialog to save logs to a file."""
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".log",
-            filetypes=[("Log files", "*.log"), ("All files", "*.*")],
-            title="Save Logs"
-        )
-        if file_path:
-            self.save_logs(file_path)
-
     def save_logs(self, path):
         """Save analysis logs to a file."""
         try:
@@ -1095,6 +937,16 @@ class ProAVShokoGUI:
 
             if node.get('children'):
                 self._render_tree_to_file(f, node['children'], level + 1)
+
+    def _save_logs_dialog(self):
+        """Show a dialog to save logs to a file."""
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".log",
+            filetypes=[("Log files", "*.log"), ("All files", "*.*")],
+            title="Save Logs"
+        )
+        if file_path:
+            self.save_logs(file_path)
 
     def main():
         """Start the GUI application."""
