@@ -60,9 +60,14 @@ jobs:
           - os: windows-latest
             label: Windows
             ext: .exe
-          - os: macos-14
-            label: MacOS Universal
+          - os: macos-13
+            label: MacOS Intel
             ext: ''
+            target_arch: x86_64
+          - os: macos-14
+            label: MacOS ARM64
+            ext: ''
+            target_arch: arm64
           - os: ubuntu-latest
             label: Linux
             ext: ''
@@ -90,12 +95,12 @@ jobs:
       - name: Build (Windows)
         if: runner.os == 'Windows'
         run: pyinstaller proav-shoko.spec --clean
-      - name: Build (macOS universal)
+      - name: Build (macOS)
         if: runner.os == 'macOS'
         run: >
           pyinstaller --onefile
-          --target-arch universal2
-          --name "ProAV Shoko MacOS Universal ${{ needs.bump-version.outputs.version }}"
+          --target-arch ${{ matrix.target_arch }}
+          --name "ProAV Shoko ${{ matrix.label }} ${{ needs.bump-version.outputs.version }}"
           --paths .
           --add-data "src/assets/report.css:src/assets"
           --add-data "src/assets/usb_data.csv:src/assets"
@@ -120,7 +125,7 @@ jobs:
         run: |
           case "${{ runner.os }}" in
             Windows) BIN=$(ls dist/ProAV\ Shoko\ Windows* | head -1) ;;
-            macOS)   BIN=$(ls dist/ProAV\ Shoko\ MacOS\ Universal* | head -1) ;;
+            macOS)   BIN=$(ls dist/ProAV\ Shoko\ MacOS\ Intel* dist/ProAV\ Shoko\ MacOS\ ARM64* 2>/dev/null | head -1) ;;
             Linux)   BIN=$(ls dist/ProAV\ Shoko\ Linux* | head -1) ;;
           esac
           chmod +x "$BIN"
