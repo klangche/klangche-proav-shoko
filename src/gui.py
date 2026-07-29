@@ -168,12 +168,27 @@ class ProAVShokoGUI:
         btn_frame = ctk.CTkFrame(bottom_frame, fg_color="transparent")
         btn_frame.pack(side=ctk.RIGHT)
 
-        report_btn = ctk.CTkButton(
-            btn_frame, text="Generate Report...",
-            font=('Segoe UI', 11, 'bold'),
-            command=self._generate_report_dialog, width=160
+        self.room_entry = ctk.CTkEntry(
+            btn_frame, width=120, font=('Segoe UI', 11),
+            placeholder_text="Room name"
         )
-        report_btn.pack(side=ctk.LEFT)
+        self.room_entry.pack(side=ctk.LEFT, padx=(0, 8))
+
+        pdf_btn = ctk.CTkButton(
+            btn_frame, text="PDF Report",
+            font=('Segoe UI', 11, 'bold'),
+            fg_color="#dc2626", hover_color="#b91c1c",
+            command=self._generate_pdf_report, width=130
+        )
+        pdf_btn.pack(side=ctk.LEFT, padx=(0, 8))
+
+        html_btn = ctk.CTkButton(
+            btn_frame, text="HTML Report",
+            font=('Segoe UI', 11, 'bold'),
+            fg_color="#2563eb", hover_color="#1d4ed8",
+            command=self._generate_html_report, width=130
+        )
+        html_btn.pack(side=ctk.LEFT)
 
     def _on_window_resize(self, event):
         if event.widget != self.root:
@@ -596,217 +611,86 @@ class ProAVShokoGUI:
         self._stop_monitoring()
         self.root.destroy()
 
-    def _generate_report_dialog(self):
+    def _generate_html_report(self):
         if not self.current_data:
             messagebox.showwarning("No data", "Run an analysis first!")
             return
 
-        stability = self.current_data['stability']
-        ports_data = stability.get('ports', [])
-
-        weasyprint_ok = True
-        try:
-            import weasyprint
-        except ImportError:
-            weasyprint_ok = False
-
-        dialog = ctk.CTkToplevel(self.root)
-        dialog.title("Generate Report")
-        dialog.geometry("600x550")
-        dialog.resizable(False, False)
-        dialog.transient(self.root)
-        dialog.grab_set()
-
-        dialog.update_idletasks()
-        x = self.root.winfo_x() + (self.root.winfo_width() - 600) // 2
-        y = self.root.winfo_y() + (self.root.winfo_height() - 550) // 2
-        dialog.geometry(f"+{x}+{y}")
-
-        title_label = ctk.CTkLabel(
-            dialog, text="Generate Report",
-            font=('Segoe UI', 12, 'bold')
-        )
-        title_label.pack(pady=(15, 5))
-
-        format_frame = ctk.CTkFrame(dialog)
-        format_frame.pack(fill=ctk.X, padx=20, pady=10)
-
-        format_label = ctk.CTkLabel(
-            format_frame, text="Report Format",
-            font=('Segoe UI', 11, 'bold')
-        )
-        format_label.pack(anchor=ctk.W, pady=(0, 8))
-
-        self.report_format_var = ctk.StringVar(value='html')
-        html_radio = ctk.CTkRadioButton(
-            format_frame, text="HTML Report (opens in browser)",
-            variable=self.report_format_var, value='html',
-            font=('Segoe UI', 10)
-        )
-        html_radio.pack(anchor=ctk.W, pady=2)
-
-        pdf_radio = ctk.CTkRadioButton(
-            format_frame, text="PDF Report" if weasyprint_ok else "PDF Report (weasyprint not available)",
-            variable=self.report_format_var, value='pdf',
-            font=('Segoe UI', 10),
-            state='normal' if weasyprint_ok else 'disabled'
-        )
-        pdf_radio.pack(anchor=ctk.W, pady=2)
-
-        port_frame = ctk.CTkFrame(dialog)
-        port_frame.pack(fill=ctk.BOTH, expand=True, padx=20, pady=10)
-
-        port_label = ctk.CTkLabel(
-            port_frame, text="Port Selection",
-            font=('Segoe UI', 11, 'bold')
-        )
-        port_label.pack(anchor=ctk.W, pady=(0, 8))
-
-        self.port_vars = {}
-        self.port_vars['Full'] = ctk.BooleanVar(value=True)
-
-        full_frame = ctk.CTkFrame(port_frame, fg_color="transparent")
-        full_frame.pack(fill=ctk.X, pady=2)
-        full_cb = ctk.CTkCheckBox(
-            full_frame, text="Full - All ports combined (overall assessment)",
-            variable=self.port_vars['Full'],
-            font=('Segoe UI', 10)
-        )
-        full_cb.pack(side=ctk.LEFT)
-
-        usb_tree = self.current_data['usb_tree']
-        root_orig = usb_tree[0] if usb_tree else {}
-        orig_children = list(root_orig.get('children', []))
-
-        external_ports = []
-        for i, port in enumerate(ports_data):
-            if i < len(orig_children):
-                child = orig_children[i]
-                if not child.get('is_internal', False) and not child.get('is_display', False):
-                    external_ports.append(port)
-
-        for port in external_ports:
-            label = port.get('label', f"Port {port.get('id', '?')}")
-            devices = len(port.get('devices', []))
-            hops = port.get('max_hops', 0)
-            tiers = port.get('max_tiers', 0)
-            hubs = port.get('external_hubs', 0)
-
-            port_var = ctk.BooleanVar(value=False)
-            self.port_vars[label] = port_var
-
-            port_row = ctk.CTkFrame(port_frame, fg_color="transparent")
-            port_row.pack(fill=ctk.X, pady=2)
-
-            ep_label = "endpoint" if devices == 1 else "endpoints"
-            cb = ctk.CTkCheckBox(
-                port_row,
-                text=f"{label}  ({devices} {ep_label}, hops={hops}, tiers={tiers}, hubs={hubs})",
-                variable=port_var,
-                font=('Segoe UI', 10)
-            )
-            cb.pack(side=ctk.LEFT)
-
-        btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
-        btn_frame.pack(fill=ctk.X, padx=20, pady=15)
-
-        generate_btn = ctk.CTkButton(
-            btn_frame, text="Generate",
-            font=('Segoe UI', 10, 'bold'),
-            command=lambda: self._do_generate_report(dialog),
-            width=120
-        )
-        generate_btn.pack(side=ctk.RIGHT, padx=(10, 0))
-
-        cancel_btn = ctk.CTkButton(
-            btn_frame, text="Cancel",
-            font=('Segoe UI', 10),
-            fg_color="gray", hover_color="darkgray",
-            command=dialog.destroy,
-            width=120
-        )
-        cancel_btn.pack(side=ctk.RIGHT)
-
-    def _do_generate_report(self, dialog):
-        format_type = self.report_format_var.get()
-
-        selected_ports = []
-        for label, var in self.port_vars.items():
-            if var.get():
-                selected_ports.append(label)
-
-        if not selected_ports:
-            selected_ports = ['Full']
-
-        dialog.destroy()
-
-        ext = '.html' if format_type == 'html' else '.pdf'
-        default_name = f"proav-shoko-{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}{ext}"
-        file_types = [("HTML files", "*.html")] if format_type == 'html' else [("PDF files", "*.pdf")]
-
+        room_name = self.room_entry.get().strip()
+        ts = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+        room_part = f"{room_name}-" if room_name else ""
+        default_name = f"proav-shoko-{room_part}{ts}.html"
         file_path = filedialog.asksaveasfilename(
-            defaultextension=ext,
-            filetypes=file_types + [("All files", "*.*")],
+            defaultextension='.html',
+            filetypes=[("HTML files", "*.html"), ("All files", "*.*")],
             initialfile=default_name,
-            title=f"Save {format_type.upper()} Report"
+            title="Save HTML Report"
         )
-
         if not file_path:
             return
 
         try:
-            self.status_label.configure(text=f"Generating {format_type.upper()}...", text_color="#f59e0b")
-            self.report_generator = ReportGenerator()
+            self.status_label.configure(text="Generating HTML...", text_color="#f59e0b")
+            self.report_generator = ReportGenerator(room_name=room_name)
+            html_path = self.report_generator.generate_html_report(
+                self.current_data['usb_tree'],
+                self.current_data['hops_data'],
+                self.current_data['stability'],
+                self.current_data['displays'],
+                self.current_data['platform_info'],
+                platform_notes=self.usb_analyzer.get_platform_notes() if self.usb_analyzer else None,
+                custom_path=file_path
+            )
+            self.status_label.configure(text="HTML saved", text_color="#10b981")
+            print(f"\n[+] HTML Report saved: {html_path}")
+            messagebox.showinfo("Done", f"HTML report saved:\n{html_path}")
+            self.report_generator.open_report(html_path)
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not generate HTML report: {e}")
+            self.status_label.configure(text=f"Error: {e}", text_color="#ef4444")
 
-            if format_type == 'html':
-                html_path = self.report_generator.generate_html_report(
-                    self.current_data['usb_tree'],
-                    self.current_data['hops_data'],
-                    self.current_data['stability'],
-                    self.current_data['displays'],
-                    self.current_data['platform_info'],
-                    platform_notes=self.usb_analyzer.get_platform_notes() if self.usb_analyzer else None,
-                    selected_ports=selected_ports,
-                    custom_path=file_path
-                )
-                self.status_label.configure(text="HTML saved", text_color="#10b981")
-                print(f"\n[+] HTML Report saved: {html_path}")
-                messagebox.showinfo("Done", f"HTML report saved:\n{html_path}")
-                self.report_generator.open_report(html_path)
+    def _generate_pdf_report(self):
+        if not self.current_data:
+            messagebox.showwarning("No data", "Run an analysis first!")
+            return
+
+        room_name = self.room_entry.get().strip()
+        ts = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+        room_part = f"{room_name}-" if room_name else ""
+        default_name = f"proav-shoko-{room_part}{ts}.pdf"
+        file_path = filedialog.asksaveasfilename(
+            defaultextension='.pdf',
+            filetypes=[("PDF files", "*.pdf"), ("All files", "*.*")],
+            initialfile=default_name,
+            title="Save PDF Report"
+        )
+        if not file_path:
+            return
+
+        try:
+            self.status_label.configure(text="Generating PDF...", text_color="#f59e0b")
+            self.report_generator = ReportGenerator(room_name=room_name)
+
+            pdf_path = self.report_generator.generate_pdf_report(
+                custom_path=file_path,
+                usb_tree=self.current_data['usb_tree'],
+                hops_data=self.current_data['hops_data'],
+                stability=self.current_data['stability'],
+                displays=self.current_data['displays'],
+                platform_info=self.current_data['platform_info'],
+                platform_notes=self.usb_analyzer.get_platform_notes() if self.usb_analyzer else None,
+            )
+
+            if pdf_path:
+                self.status_label.configure(text="PDF saved", text_color="#10b981")
+                print(f"\n[+] PDF Report saved: {pdf_path}")
+                messagebox.showinfo("Done", f"PDF report saved:\n{pdf_path}")
+                self.report_generator.open_report(pdf_path)
             else:
-                import tempfile
-                with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as tmp:
-                    tmp_path = tmp.name
-
-                html_path = self.report_generator.generate_html_report(
-                    self.current_data['usb_tree'],
-                    self.current_data['hops_data'],
-                    self.current_data['stability'],
-                    self.current_data['displays'],
-                    self.current_data['platform_info'],
-                    platform_notes=self.usb_analyzer.get_platform_notes() if self.usb_analyzer else None,
-                    selected_ports=selected_ports,
-                    custom_path=tmp_path
-                )
-
-                pdf_path = self.report_generator.generate_pdf_report(html_path, custom_path=file_path)
-
-                try:
-                    Path(tmp_path).unlink()
-                except:
-                    pass
-
-                if pdf_path:
-                    self.status_label.configure(text="PDF saved", text_color="#10b981")
-                    print(f"\n[+] PDF Report saved: {pdf_path}")
-                    messagebox.showinfo("Done", f"PDF report saved:\n{pdf_path}")
-                    self.report_generator.open_report(pdf_path)
-                else:
-                    messagebox.showwarning("Warning", "PDF generation failed. Check that weasyprint is installed.")
-                    self.status_label.configure(text="PDF failed", text_color="#ef4444")
+                self.status_label.configure(text="PDF failed", text_color="#ef4444")
 
         except Exception as e:
-            messagebox.showerror("Error", f"Could not generate report: {e}")
+            messagebox.showerror("Error", f"Could not generate PDF report: {e}")
             self.status_label.configure(text=f"Error: {e}", text_color="#ef4444")
 
 

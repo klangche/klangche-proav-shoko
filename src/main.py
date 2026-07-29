@@ -17,6 +17,8 @@ def _check_module(module_name, pip_name=None):
         return True
     except ImportError:
         return False
+    except Exception:
+        return False
 
 
 def _check_system_deps():
@@ -118,8 +120,6 @@ def main():
             print("[!] tkinter not found. GUI mode requires Python tk support.")
             print("    Linux: sudo apt-get install python3-tk")
             print("    macOS: brew install python-tk")
-        if not _check_module("weasyprint"):
-            missing_pip.append("weasyprint")
         if not _check_module("usbmonitor"):
             missing_pip.append("usb-monitor")
         if not _check_module("screeninfo"):

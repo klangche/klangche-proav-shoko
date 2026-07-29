@@ -395,7 +395,10 @@ def main(csv_path=None):
         print("=" * 70)
         print()
 
-    # 6. Report generation - ask for format (always print all ports)
+    # 6. Room name
+    room_name = input("Room name (optional, press Enter to skip): ").strip()
+
+    # 7. Report generation - ask for format (always print all ports)
     format_type = _prompt_report_format()
     
     if format_type == 'none':
@@ -404,11 +407,10 @@ def main(csv_path=None):
         print("=" * 70)
         return
     
-    # Always print all ports - no selection needed
     selected_ports = None  # None means all ports
     
     print("\n  Generating report...")
-    report_gen = ReportGenerator()
+    report_gen = ReportGenerator(room_name=room_name)
 
     if format_type == 'html':
         html_path = report_gen.generate_html_report(
@@ -425,29 +427,17 @@ def main(csv_path=None):
         print(f"  HTML Report: {html_path}")
         report_gen.open_report(html_path)
     else:
-        # For PDF, generate HTML first then convert
-        import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as tmp:
-            tmp_path = tmp.name
-        html_path = report_gen.generate_html_report(
-            usb_tree,
-            hops_data,
-            stability,
-            displays,
-            platform_info,
+        pdf_path = report_gen.generate_pdf_report(
+            usb_tree=usb_tree, hops_data=hops_data,
+            stability=stability, displays=displays,
+            platform_info=platform_info,
             platform_notes=usb_analyzer.get_platform_notes(),
-            selected_ports=selected_ports,
             monitoring_logs=monitoring_logs,
-            unstable_devices=unstable_devices,
-            custom_path=tmp_path
+            unstable_devices=unstable_devices
         )
-        pdf_path = report_gen.generate_pdf_report(html_path)
         if pdf_path:
             print(f"  PDF Report:  {pdf_path}")
             report_gen.open_report(pdf_path)
-        else:
-            print("  PDF generation failed (weasyprint not available). HTML saved instead.")
-            report_gen.open_report(html_path)
 
     _print_separator()
     print("Done!")

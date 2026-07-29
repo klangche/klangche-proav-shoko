@@ -33,7 +33,6 @@ requires-python = ">=3.10"
 dependencies = [
     "usb-monitor>=1.0.0",
     "screeninfo>=0.8.0",
-    "weasyprint>=60.0",
     "customtkinter>=5.2.0"
 ]
 
