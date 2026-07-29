@@ -8,7 +8,7 @@ MAJOR = 0
 MINOR = 4
 PATCH = 0
 STAGE = "beta"
-PRERELEASE = 10
+PRERELEASE = 11
 
 
 def get_version():
