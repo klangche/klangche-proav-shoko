@@ -117,6 +117,11 @@ def _print_section_header(title):
     print("-" * 70)
 
 
+def _print_tag(tag: str):
+    """Print a machine-parseable tag for GUI parsing. Only tag name, no [TAG:] wrapper."""
+    print(tag)
+
+
 def _node_label(node):
     """Build a display label with interface type, model name and VID:PID."""
     model = node.get('model', node.get('name', 'Unknown'))
@@ -262,6 +267,7 @@ def main(csv_path=None):
     orig_children = list(root_orig.get('children', []))
 
     print("  Full USB & Display Tree")
+    _print_tag("overall.tree")
     if usb_tree:
         root_node = usb_tree[0]
 
@@ -282,8 +288,16 @@ def main(csv_path=None):
     print()
 
     print("  Overall rating")
+    _print_tag("overall.verdict")
     for v in stability.get('verdicts', []):
         _print_verdict(v)
+    
+    # Print overall warnings if any
+    overall_warnings = [v for v in stability.get('verdicts', []) if v.get('warning')]
+    if overall_warnings:
+        _print_tag("overall.warnings")
+        for w in overall_warnings:
+            print(f"    ! {w['name']}: {w['warning']}")
     print()
     print("=" * 31 + "PER PORT" + "=" * 31)
     print()
@@ -303,14 +317,13 @@ def main(csv_path=None):
         print(f"  {int_pre}{label} ({dc} {ep_label}, hops={ph}, tiers={pt}, hubs={p_hub})")
         _print_port_tree(child)
         if is_int:
-            print("    (internal)")
-        elif port_info:
-            _print_stability_port(port_info, port_info['verdicts'])
+            pass
 
     sep = "  " + "- " * 35
 
-    def print_section(header, is_internal_filter):
+    def print_section(header, is_internal_filter, tag_prefix):
         print("-" * 31 + header + "-" * 31)
+        _print_tag(f"{tag_prefix}.section")
         first = True
         for idx, child in enumerate(orig_children):
             if child.get('is_display'):
@@ -319,13 +332,29 @@ def main(csv_path=None):
                 continue
             if not first:
                 print()
+            
+            port_tag = f"{tag_prefix}.port{idx + 1}"
+            _print_tag(f"{port_tag}.tree")
             _print_port_child(child, idx)
+            print()
+            
+            port_info = next((p for p in ports_data if p.get('id') == idx + 1), None)
+            if port_info and tag_prefix != "internal":
+                _print_tag(f"{port_tag}.verdict")
+                _print_stability_port(port_info, port_info['verdicts'])
+                
+                port_warnings = [v for v in port_info['verdicts'] if v.get('warning')]
+                if port_warnings:
+                    _print_tag(f"{port_tag}.warnings")
+                    for w in port_warnings:
+                        print(f"    ! {w['name']}: {w['warning']}")
+            
             print()
             print(sep)
             first = False
 
-    print_section("EXTERNAL", lambda c: not c.get('is_internal', False))
-    print_section("INTERNAL", lambda c: c.get('is_internal', False))
+    print_section("EXTERNAL", lambda c: not c.get('is_internal', False), "external")
+    print_section("INTERNAL", lambda c: c.get('is_internal', False), "internal")
 
     # Live monitoring
     log_manager = LogManager()
