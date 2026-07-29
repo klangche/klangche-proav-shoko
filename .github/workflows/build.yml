@@ -51,39 +51,90 @@ jobs:
           git tag "${{ steps.bump.outputs.tag }}"
           git push origin main --tags
 
-  build:
+  build-windows:
     needs: bump-version
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            label: Windows
-            ext: .exe
-          - os: macos-13
-            label: MacOS Intel
-            ext: ''
-            target_arch: x86_64
-          - os: macos-14
-            label: MacOS ARM64
-            ext: ''
-            target_arch: arm64
-          - os: ubuntu-latest
-            label: Linux
-            ext: ''
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      - name: Install system deps (Linux)
-        if: runner.os == 'Linux'
+      - name: Generate .ico
+        run: python scripts/generate_icon.py
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller
+      - name: Build
+        run: pyinstaller proav-shoko.spec --clean
+      - name: Rename exe
+        shell: bash
+        run: |
+          VER="${{ needs.bump-version.outputs.version }}"
+          mv dist/ProAV\ Shoko\ *.exe "dist/ProAV Shoko Windows $VER.exe"
+      - name: Smoke test
+        shell: bash
+        run: |
+          BIN=$(ls dist/ProAV\ Shoko\ Windows* | head -1)
+          chmod +x "$BIN"
+          "$BIN" --cli || echo "Smoke test exited non-zero (expected on a runner with no USB/display hardware), continuing."
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProAV Shoko Windows ${{ needs.bump-version.outputs.version }}.exe
+          path: dist/ProAV Shoko Windows*
+          if-no-files-found: error
+
+  build-linux:
+    needs: bump-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install system deps
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-tk libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libcairo2
-      - name: Install system deps (macOS)
-        if: runner.os == 'macOS'
+      - name: Generate .ico
+        run: python scripts/generate_icon.py
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller
+      - name: Build
+        run: >
+          pyinstaller --onefile
+          --name "ProAV Shoko Linux ${{ needs.bump-version.outputs.version }}"
+          --paths .
+          --add-data "src/assets/report.css:src/assets"
+          --add-data "src/assets/usb_data.csv:src/assets"
+          run.py
+      - name: Smoke test
+        shell: bash
+        run: |
+          BIN=$(ls dist/ProAV\ Shoko\ Linux* | head -1)
+          chmod +x "$BIN"
+          "$BIN" --cli || echo "Smoke test exited non-zero (expected on a runner with no USB/display hardware), continuing."
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProAV Shoko Linux ${{ needs.bump-version.outputs.version }}
+          path: dist/ProAV Shoko Linux*
+          if-no-files-found: error
+
+  build-macos-intel:
+    needs: bump-version
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install system deps
         run: brew install pango
       - name: Generate .ico
         run: python scripts/generate_icon.py
@@ -92,54 +143,70 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           pip install pyinstaller
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        run: pyinstaller proav-shoko.spec --clean
-      - name: Build (macOS)
-        if: runner.os == 'macOS'
+      - name: Build
         run: >
           pyinstaller --onefile
-          --target-arch ${{ matrix.target_arch }}
-          --name "ProAV Shoko ${{ matrix.label }} ${{ needs.bump-version.outputs.version }}"
+          --target-arch x86_64
+          --name "ProAV Shoko MacOS Intel ${{ needs.bump-version.outputs.version }}"
           --paths .
           --add-data "src/assets/report.css:src/assets"
           --add-data "src/assets/usb_data.csv:src/assets"
           run.py
-      - name: Build (Linux)
-        if: runner.os == 'Linux'
-        run: >
-          pyinstaller --onefile
-          --name "ProAV Shoko Linux ${{ needs.bump-version.outputs.version }}"
-          --paths .
-          --add-data "src/assets/report.css:src/assets"
-          --add-data "src/assets/usb_data.csv:src/assets"
-          run.py
-      - name: Rename Windows exe
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          VER="${{ needs.bump-version.outputs.version }}"
-          mv dist/ProAV\ Shoko\ *.exe "dist/ProAV Shoko Windows $VER.exe"
       - name: Smoke test
         shell: bash
         run: |
-          case "${{ runner.os }}" in
-            Windows) BIN=$(ls dist/ProAV\ Shoko\ Windows* | head -1) ;;
-            macOS)   BIN=$(ls dist/ProAV\ Shoko\ MacOS\ Intel* dist/ProAV\ Shoko\ MacOS\ ARM64* 2>/dev/null | head -1) ;;
-            Linux)   BIN=$(ls dist/ProAV\ Shoko\ Linux* | head -1) ;;
-          esac
+          BIN=$(ls dist/ProAV\ Shoko\ MacOS\ Intel* | head -1)
           chmod +x "$BIN"
           "$BIN" --cli || echo "Smoke test exited non-zero (expected on a runner with no USB/display hardware), continuing."
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ProAV Shoko ${{ matrix.label }} ${{ needs.bump-version.outputs.version }}${{ matrix.ext }}
-          path: dist/ProAV Shoko*
+          name: ProAV Shoko MacOS Intel ${{ needs.bump-version.outputs.version }}
+          path: dist/ProAV Shoko MacOS Intel*
+          if-no-files-found: error
+
+  build-macos-arm64:
+    needs: bump-version
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install system deps
+        run: brew install pango
+      - name: Generate .ico
+        run: python scripts/generate_icon.py
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller
+      - name: Build
+        run: >
+          pyinstaller --onefile
+          --target-arch arm64
+          --name "ProAV Shoko MacOS ARM64 ${{ needs.bump-version.outputs.version }}"
+          --paths .
+          --add-data "src/assets/report.css:src/assets"
+          --add-data "src/assets/usb_data.csv:src/assets"
+          run.py
+      - name: Smoke test
+        shell: bash
+        run: |
+          BIN=$(ls dist/ProAV\ Shoko\ MacOS\ ARM64* | head -1)
+          chmod +x "$BIN"
+          "$BIN" --cli || echo "Smoke test exited non-zero (expected on a runner with no USB/display hardware), continuing."
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProAV Shoko MacOS ARM64 ${{ needs.bump-version.outputs.version }}
+          path: dist/ProAV Shoko MacOS ARM64*
           if-no-files-found: error
 
   release:
     name: Publish release
-    needs: [bump-version, build]
+    needs: [bump-version, build-windows, build-linux, build-macos-intel, build-macos-arm64]
     runs-on: ubuntu-latest
     steps:
       - name: Download all build artifacts
