@@ -1,16 +1,14 @@
-name: Build
+name: Build & Release
 
-# Builds a standalone executable for Windows using PyInstaller.
+# Every push to `main` that touches source files auto-increments the
+# prerelease number (e.g. 0.4.0-beta.5 → 0.4.0-beta.6), builds a
+# Windows executable, and publishes a GitHub Release.
 #
-# - Push a tag like "v1.0.1" to build and publish a GitHub Release.
-# - Or run manually from the Actions tab (workflow_dispatch).
-#
-# macOS and Linux builds are paused (WIP).
+# Use `workflow_dispatch` in the Actions tab to trigger manually.
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - 'src/**'
       - 'run.py'
@@ -18,42 +16,51 @@ on:
       - 'pyproject.toml'
       - 'proav-shoko.spec'
       - '.github/workflows/**'
-    tags:
-      - 'v*'
   workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PYTHON_VERSION: '3.11'
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            name: proav-shoko-windows
-            asset: proav-shoko-windows.exe
-          # macOS (Intel) - paused
-          # - os: macos-13
-          #   name: proav-shoko-macos-intel
-          #   asset: proav-shoko-macos-intel
-          # macOS (Apple Silicon) - paused
-          # - os: macos-14
-          #   name: proav-shoko-macos-arm64
-          #   asset: proav-shoko-macos-arm64
-          # Linux - paused
-          # - os: ubuntu-latest
-          #   name: proav-shoko-linux
-          #   asset: proav-shoko-linux
-
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Bump prerelease version
+        id: bump
+        run: |
+          python scripts/ci_bump_version.py | ForEach-Object {
+            if ($_ -match '^version=(.+)$') { "version=$($matches[1])" >> $env:GITHUB_OUTPUT }
+            if ($_ -match '^tag=(.+)$')     { "tag=$($matches[1])" >> $env:GITHUB_OUTPUT }
+            Write-Host $_
+          }
+
+      - name: Commit version bump and tag
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/version.py proav-shoko.json pyproject.toml
+          git commit -m "Bump version to ${{ steps.bump.outputs.version }} [skip ci]"
+          git tag "${{ steps.bump.outputs.tag }}"
+          git push origin main --tags
 
       - name: Install Python dependencies
         run: |
@@ -65,48 +72,21 @@ jobs:
         run: python scripts/generate_icon.py
 
       - name: Build executable (Windows)
-        if: runner.os == 'Windows'
         run: pyinstaller proav-shoko.spec --clean
 
-      - name: Smoke test the built executable
+      - name: Smoke test
         shell: bash
         run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            BIN="dist/proav-shoko.exe"
-          else
-            BIN="dist/${{ matrix.name }}"
-            chmod +x "$BIN"
-          fi
+          BIN="dist/proav-shoko.exe"
           "$BIN" --cli || echo "Smoke test exited non-zero (expected on a runner with no USB/display hardware), continuing."
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.asset }}
-          path: |
-            dist/proav-shoko.exe
-            dist/ProAV Shoko.exe
-          if-no-files-found: ignore
-
-  release:
-    name: Publish release
-    needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-
-      - name: Flatten artifacts into one folder
-        run: |
-          mkdir -p release
-          find dist -type f -exec cp {} release/ \;
-          ls -la release
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release/*
+          tag_name: ${{ steps.bump.outputs.tag }}
+          name: ProAV Shoko ${{ steps.bump.outputs.version }}
+          files: |
+            dist/proav-shoko.exe
+            dist/ProAV Shoko.exe
           generate_release_notes: true
+          fail_on_unmatched_files: false
