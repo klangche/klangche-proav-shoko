@@ -476,7 +476,7 @@ class ProAVShokoGUI:
                 _print_port_label(child, idx)
                 self.tree_text.insert("end", "\n")
                 port_info = next((p for p in ports_data if p.get('id') == idx + 1), None)
-                if port_info:
+                if port_info and tag_prefix != "internal":
                     self._print_tag(f"{port_tag}.verdict")
                     self._print_stability_port(port_info, port_info['verdicts'])
                     port_warnings = [v for v in port_info['verdicts'] if v.get('warning')]
@@ -604,6 +604,12 @@ class ProAVShokoGUI:
         stability = self.current_data['stability']
         ports_data = stability.get('ports', [])
 
+        weasyprint_ok = True
+        try:
+            import weasyprint
+        except ImportError:
+            weasyprint_ok = False
+
         dialog = ctk.CTkToplevel(self.root)
         dialog.title("Generate Report")
         dialog.geometry("600x550")
@@ -640,9 +646,10 @@ class ProAVShokoGUI:
         html_radio.pack(anchor=ctk.W, pady=2)
 
         pdf_radio = ctk.CTkRadioButton(
-            format_frame, text="PDF Report (requires weasyprint)",
+            format_frame, text="PDF Report" if weasyprint_ok else "PDF Report (weasyprint not available)",
             variable=self.report_format_var, value='pdf',
-            font=('Segoe UI', 10)
+            font=('Segoe UI', 10),
+            state='normal' if weasyprint_ok else 'disabled'
         )
         pdf_radio.pack(anchor=ctk.W, pady=2)
 

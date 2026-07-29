@@ -71,6 +71,15 @@ def _offer_install(pip_packages, system_packages=None):
             print(f"    brew install {' '.join(system_packages)}")
 
 
+def _set_icon_later(root, ico_path):
+    """Set window icon after the window is mapped (ensures taskbar icon)."""
+    if ico_path and ico_path.exists():
+        try:
+            root.iconbitmap(str(ico_path))
+        except Exception:
+            pass
+
+
 def main():
     """Main function - starts the GUI or the CLI."""
     is_frozen = getattr(sys, 'frozen', False)
@@ -130,7 +139,11 @@ def main():
             from pathlib import Path
             ico = Path(__file__).parent / "resources" / "shoko-icon.ico"
             if ico.exists():
-                root.iconbitmap(str(ico))
+                try:
+                    root.iconbitmap(str(ico))
+                except Exception:
+                    pass
+            root.after(50, lambda: _set_icon_later(root, ico))
             app = ProAVShokoGUI(root, args.csv_path)
             root.mainloop()
         except ImportError as e:

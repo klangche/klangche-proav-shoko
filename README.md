@@ -22,8 +22,9 @@ Download the latest release for your platform:
 
 **Python (any platform)**
 ```bash
-pip install git+https://github.com/klangche/klangche-proav-shoko.git && proav-shoko --cli
+pip install git+https://github.com/klangche/klangche-proav-shoko.git; proav-shoko --cli
 ```
+> PowerShell users: use `;` instead of `&&` between commands.
 
 **PowerShell (Windows)**
 ```powershell

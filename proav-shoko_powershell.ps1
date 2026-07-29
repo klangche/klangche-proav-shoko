@@ -723,7 +723,7 @@ function Prompt-Monitor {
 function Main {
     $isAdmin = $false
     try { $identity = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent(); $isAdmin = $identity.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) } catch { }
-    if (-not $isAdmin) {
+    if (-not $isAdmin -and -not $env:SHOKO_SKIP_ADMIN_CHECK) {
         Write-Host "Administrator mode provides more USB data." -ForegroundColor Yellow
         $elevate = Read-Host "Run with administrator privileges? [Y/n]"
         if ($elevate -eq '' -or $elevate -match '^[Yy]') {

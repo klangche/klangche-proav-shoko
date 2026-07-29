@@ -211,7 +211,7 @@ class ReportGenerator:
                 for line in self._build_port_tree_html(usb_tree[0].get('children', [])[idx]):
                     lines.append("    " + line)
                 
-                if port_info:
+                if port_info and header != "INTERNAL":
                     for v in port_info['verdicts']:
                         lines.append(self._format_verdict(v))
                 if header == "INTERNAL":

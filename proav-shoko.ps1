@@ -67,6 +67,7 @@ if (-not $isAdmin) {
 
 try {
     Write-Host "Loading main script..." -ForegroundColor Gray
+    $env:SHOKO_SKIP_ADMIN_CHECK = "1"
     $script = @(Invoke-RestMethod "$RefBase/proav-shoko_powershell.ps1") -join "`n"
     $script = $script.TrimStart([char]0xFEFF)
     Invoke-Expression $script
