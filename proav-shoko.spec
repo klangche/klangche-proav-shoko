@@ -55,12 +55,17 @@ EXCLUDES = [
 ICON_FILE = os.path.join(BASE_DIR, "src", "resources", "shoko-icon.ico")
 
 
+# Collect weasyprint data files and native libs for PDF export
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
+weasyprint_datas = collect_data_files('weasyprint')
+weasyprint_bins = collect_dynamic_libs('weasyprint')
+
 # Build Analysis
 a = Analysis(
     [MAIN_SCRIPT],
     pathex=[BASE_DIR],
-    binaries=[],
-    datas=DATAS,
+    binaries=weasyprint_bins,
+    datas=DATAS + weasyprint_datas,
     hiddenimports=HIDDEN_IMPORTS,
     hookspath=[],
     hooksconfig={},

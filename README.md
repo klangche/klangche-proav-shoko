@@ -5,14 +5,20 @@ Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD envir
 
 [![Releases](https://img.shields.io/github/v/release/klangche/klangche-proav-shoko?label=download)](https://github.com/klangche/klangche-proav-shoko/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Python%20%7C%20PowerShell-lightgrey)](https://github.com/klangche/klangche-proav-shoko)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Python%20%7C%20PowerShell-lightgrey)](https://github.com/klangche/klangche-proav-shoko)
 [![SemVer](https://img.shields.io/badge/versioning-SemVer%202.0.0-blue)](VERSIONING.md)
 
 ---
 
 ## Quick Start
 
-[Download](https://github.com/klangche/klangche-proav-shoko/releases) the latest release — Windows `.exe`, no installation required.
+Download the latest release for your platform:
+
+| Platform | Download |
+|----------|----------|
+| **Windows** | [`ProAV Shoko Windows <version>.exe`](https://github.com/klangche/klangche-proav-shoko/releases) — no install required |
+| **macOS** (Intel + Apple Silicon) | [`ProAV Shoko MacOS Universal <version>`](https://github.com/klangche/klangche-proav-shoko/releases) — universal binary |
+| **Linux** | [`ProAV Shoko Linux <version>`](https://github.com/klangche/klangche-proav-shoko/releases) — standalone executable |
 
 **Python (any platform)**
 ```bash
@@ -79,8 +85,9 @@ In modern meeting rooms we often see:
 | Apple Silicon Warning | Special warning at 5+ hops | ✅ |
 | Display Information | Shows connected displays with resolution | ✅ |
 | HTML Report | Dark background, identical to the terminal | ✅ |
-| PDF Report | Long, continuous page for printing | ✅ |
+| PDF Report | Bundled weasyprint, no extra install | ✅ |
 | GUI | Live overview with tree and log | ✅ |
+| Cross-platform | Windows exe, macOS Universal, Linux, Python, PowerShell | ✅ |
 
 ---
 
@@ -89,9 +96,9 @@ In modern meeting rooms we often see:
 - **Python 3.10+** - Core language
 - **usbmonitor** - USB device monitoring
 - **screeninfo** - Display information
-- **weasyprint** - PDF generation
+- **weasyprint** - PDF generation (bundled in packaged apps)
 - **customtkinter** - Modern GUI theme (includes tkinter)
-- **PyInstaller** - Cross-platform builds
+- **PyInstaller** - Cross-platform builds (Windows exe, macOS Universal, Linux)
 - **Mermaid.js** - Diagrams in HTML reports
 - **PowerShell** - Windows launcher
 
