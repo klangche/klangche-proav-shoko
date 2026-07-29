@@ -1,94 +1,81 @@
 #!/usr/bin/env python3
+"""Check GUI compatibility with CLI"""
 
-import re
-import os
+with open('src/gui.py', 'r') as f:
+    content = f.read()
 
-def check_gui_issues():
-    print("=== Checking src/gui.py for issues ===\n")
-    
-    # Read the file
-    with open('src/gui.py', 'r') as f:
-        content = f.read()
-    
-    # Check for text_color
-    if 'text_color' in content:
-        print("FAIL: text_color found!")
-        
-        # Find all matches
-        lines = content.split('\n')
-        for i, line in enumerate(lines, 1):
-            if 'text_color' in line:
-                print(f"  Line {i}: {line.strip()}")
-    else:
-        print("PASS: No text_color found")
-    
-    # Check for temp_log.txt saving (dangerous operation)
-    if 'temp_log.txt' in content:
-        print("FAIL: temp_log.txt file saving found!")
-        
-        # Find all matches
-        lines = content.split('\n')
-        for i, line in enumerate(lines, 1):
-            if 'temp_log.txt' in line:
-                print(f"  Line {i}: {line.strip()}")
-    else:
-        print("PASS: No temp_log.txt file saving")
-    
-    # Check if _update_tree_display has VERDICT
-    lines = content.split('\n')
-    in_method = False
-    method_lines = []
-    
-    for line in lines:
-        if 'def _update_tree_display' in line:
-            in_method = True
-            method_lines.append(line)
-        elif in_method:
-            method_lines.append(line)
-            if line.strip() and 'def ' in line and not line.strip().startswith('        '):
-                # End of the method
-                break
-    
-    # Check for VERDICT in the method
-    method_text = '\n'.join(method_lines)
-    if 'VERDICT' in method_text:
-        print("PASS: VERDICT found in _update_tree_display method")
-        
-        # Count VERDICT occurrences
-        verdict_count = method_text.count('VERDICT')
-        print(f"  VERDICT appears {verdict_count} times")
-    else:
-        print("FAIL: VERDICT not found in _update_tree_display")
-    
-    # Show context around _update_tree_display
-    print("\n=== Context around _update_tree_display ===")
-    in_method = False
-    indent_level = None
-    
-    for line in lines:
-        if 'def _update_tree_display' in line:
-            in_method = True
-            indent_level = len(line) - len(line.lstrip())
-            print(line)
-        elif in_method:
-            if line.strip() and len(line) - len(line.lstrip()) <= indent_level and 'def ' in line and not line.strip().startswith('        '):
-                break
-            print(line)
-    
-    # Create a backup or version with CRLF line endings
-    print("\n=== Creating CRLF version ===")
-    with open('src/gui_crlf.py', 'w', newline='\r\n') as f:
-        f.write(content)
-    print(f"Created src/gui_crlf.py with CRLF line endings")
-    
-    print("\n=== Summary ===")
-    if 'text_color' not in content and 'temp_log.txt' not in content and 'VERDICT' in method_text:
-        print("✓ GUI is safe to run - no permission errors or text_color issues")
-        print("✓ Tree display updates with VERDICT sections")
-        return True
-    else:
-        print("✗ GUI has issues that need fixing")
-        return False
+print("=== GUI CLI COMPATIBILITY CHECK ===")
+print()
 
-if __name__ == "__main__":
-    check_gui_issues()
+# Check TAGGING support
+has_tagg_tree = 'Tagg xxx.tree' in content
+has_tagg_score = 'Tagg xxx.score' in content
+has_tag_warnings = 'Tag xxx.warnings' in content
+tagging_ok = has_tagg_tree and has_tagg_score and has_tag_warnings
+print("TAGGING support (Tagg xxx.tree, Tagg xxx.score, Tag xxx.warnings): PASS" if tagging_ok else "TAGGING support (Tagg xxx.tree, Tagg xxx.score, Tag xxx.warnings): FAIL")
+
+# Check 'Full USB & Display Tree' header
+has_full_tree = 'Full USB & Display Tree' in content
+print("Full USB & Display Tree header: PASS" if has_full_tree else "Full USB & Display Tree header: FAIL")
+
+# Check VERDICT sections - count how many
+verdict_count = content.count('VERDICT')
+print(f"VERDICT sections: {verdict_count} found (at least 2 needed): PASS" if verdict_count >= 2 else f"VERDICT sections: {verdict_count} found (at least 2 needed): FAIL")
+
+# Check PER PORT header
+has_per_port = 'PER PORT' in content
+print("PER PORT section header: PASS" if has_per_port else "PER PORT section header: FAIL")
+
+# Check for _print_tag method
+has_print_tag = 'def _print_tag(self, tag: str)' in content
+print("_print_tag method: PASS" if has_print_tag else "_print_tag method: FAIL")
+
+# Check for _print_verdict method
+has_print_verdict = 'def _print_verdict(self, v)' in content
+print("_print_verdict method: PASS" if has_print_verdict else "_print_verdict method: FAIL")
+
+# Check for _print_section_header method
+has_print_section_header = 'def _print_section_header(self, title)' in content
+print("_print_section_header method: PASS" if has_print_section_header else "_print_section_header method: FAIL")
+
+# Check layout - right side is tree
+has_right_side_tree = 'self.right_frame = tk.Frame(middle_container' in content and 'tree_frame = tk.Frame(self.right_frame' in content
+print("Right side contains tree (left side is log): PASS" if has_right_side_tree else "Right side contains tree (left side is log): FAIL")
+
+print()
+print("=== SUMMARY ===")
+requirements = [tagging_ok, has_full_tree, verdict_count >= 2, has_per_port, has_print_tag, has_print_verdict, has_print_section_header, has_right_side_tree]
+passed = sum(requirements)
+total = len(requirements)
+print(f"Requirements met: {passed}/{total}")
+
+if passed == total:
+    print("\nALL CLI REQUIREMENTS MET!")
+else:
+    print("\nSOME CLI REQUIREMENTS MISSING!")
+
+print("\n=== DETAILED BREAKDOWN ===")
+
+ttag_tree_count = content.count('Tagg xxx.tree')
+ttag_score_count = content.count('Tagg xxx.score')
+tag_warnings_count = content.count('Tag xxx.warnings')
+print("\nTAGGING sections found:")
+print(f"  - Tagg xxx.tree: {ttag_tree_count}")
+print(f"  - Tagg xxx.score: {ttag_score_count}")
+print(f"  - Tag xxx.warnings: {tag_warnings_count}")
+
+print("\nVERDICT sections found:")
+lines = content.split('\n')
+for i, line in enumerate(lines):
+    if 'VERDICT' in line and i+1 < len(lines) and 'VERDICT' in lines[i+1]:
+        print(f"  Line {i+1}: {line.strip()[:100]}")
+
+# Check layout configuration
+print("\n=== LAYOUT CONFIGURATION ===")
+print("Left side: should show logging (log panel)")
+left_has_log = 'self.log_text = tk.Text' in content and 'self.log_text.pack' in content
+print(f"  Log panel exists: {left_has_log}")
+print("Right side: should show full tree, verdicts, warnings like cli")
+right_has_tree = 'tree_frame = tk.Frame(self.right_frame)' in content
+print(f"  Tree panel exists on right: {right_has_tree}")
+EOF

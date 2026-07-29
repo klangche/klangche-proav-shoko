@@ -166,47 +166,20 @@ class ProAVShokoGUI:
         )
         self.start_btn.pack(side=tk.RIGHT, padx=(10, 0))
 
-        # === MIDDLE: Tree (left, ~70%) + Log (right, ~30%), resizable ===
-        middle_container = tk.Frame(main_frame, bg=self.colors['bg'])
-        middle_container.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+    # === MIDDLE: Tree (right, ~70%) + Log (left, ~30%), resizable ===
+    middle_container = tk.Frame(main_frame, bg=self.colors['bg'])
+    middle_container.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
 
-        # Left: USB tree with stability - the dominant panel
+    # Left: Live log - connect/disconnect/re-enumeration events as they happen
+    self.left_frame = tk.Frame(middle_container, bg=self.colors['bg_card'], relief=tk.RAISED, borderwidth=1)
+    self.left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+
+        # Left: Live log - connect/disconnect/re-enumeration events as they happen
         self.left_frame = tk.Frame(middle_container, bg=self.colors['bg_card'], relief=tk.RAISED, borderwidth=1)
         self.left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
 
-        # Tree header
-        tree_header = tk.Frame(self.left_frame, bg=self.colors['bg_light'], height=40)
-        tree_header.pack(fill=tk.X)
-        tree_header_label = tk.Label(
-            tree_header,
-            text="USB Tree & Stability",
-            font=('Segoe UI', 13, 'bold'),
-            bg=self.colors['bg_light'],
-            fg=self.colors['text']
-        )
-        tree_header_label.pack(side=tk.LEFT, padx=15, pady=8)
-
-        # Tree text area
-        tree_frame = tk.Frame(self.left_frame, bg=self.colors['bg_card'])
-        tree_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
-
-        self.tree_text = tk.Text(
-            tree_frame,
-            bg=self.colors['bg_card'],
-            fg=self.colors['text'],
-            font=('Consolas', 11),
-            wrap=tk.WORD,
-            relief=tk.FLAT,
-            borderwidth=0
-        )
-        self.tree_text.pack(fill=tk.BOTH, expand=True)
-
-        # Right: Live log - connect/disconnect/re-enumeration events as they happen
-        self.right_frame = tk.Frame(middle_container, bg=self.colors['bg_card'], relief=tk.RAISED, borderwidth=1)
-        self.right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(0, 0))
-
         # Log header
-        log_header = tk.Frame(self.right_frame, bg=self.colors['bg_light'], height=40)
+        log_header = tk.Frame(self.left_frame, bg=self.colors['bg_light'], height=40)
         log_header.pack(fill=tk.X)
         log_header_label = tk.Label(
             log_header,
@@ -218,7 +191,7 @@ class ProAVShokoGUI:
         log_header_label.pack(side=tk.LEFT, padx=15, pady=8)
 
         # Log text area - using standard Text widget for better tag support
-        log_frame = tk.Frame(self.right_frame, bg=self.colors['bg_card'])
+        log_frame = tk.Frame(self.left_frame, bg=self.colors['bg_card'])
         log_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
 
         self.log_text = tk.Text(
@@ -231,6 +204,37 @@ class ProAVShokoGUI:
             borderwidth=0
         )
         self.log_text.pack(fill=tk.BOTH, expand=True)
+
+        # Right: USB tree with stability - the dominant panel (like CLI)
+        self.right_frame = tk.Frame(middle_container, bg=self.colors['bg_card'], relief=tk.RAISED, borderwidth=1)
+        self.right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(0, 0))
+
+        # Tree header
+        tree_header = tk.Frame(self.right_frame, bg=self.colors['bg_light'], height=40)
+        tree_header.pack(fill=tk.X)
+        tree_header_label = tk.Label(
+            tree_header,
+            text="USB Tree & Stability",
+            font=('Segoe UI', 13, 'bold'),
+            bg=self.colors['bg_light'],
+            fg=self.colors['text']
+        )
+        tree_header_label.pack(side=tk.LEFT, padx=15, pady=8)
+
+        # Tree text area
+        tree_frame = tk.Frame(self.right_frame, bg=self.colors['bg_card'])
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+
+        self.tree_text = tk.Text(
+            tree_frame,
+            bg=self.colors['bg_card'],
+            fg=self.colors['text'],
+            font=('Consolas', 11),
+            wrap=tk.WORD,
+            relief=tk.FLAT,
+            borderwidth=0
+        )
+        self.tree_text.pack(fill=tk.BOTH, expand=True)
 
         self.log_text.tag_configure('event_connect', foreground=self.colors['green'])
         self.log_text.tag_configure('event_disconnect', foreground=self.colors['orange'])
@@ -420,6 +424,46 @@ class ProAVShokoGUI:
         """Update the tree display to match CLI exactly."""
         self.tree_text.delete('0.0', tk.END)
 
+        # NEW: Add Full USB & Display Tree header (like CLI)
+        self._print_section_header("Full USB & Display Tree")
+        self._print_tag("overall.tree")
+        
+        # Build the tree from the usb_tree
+        if usb_tree:
+            root_node = usb_tree[0]
+
+            # Add displays directly into tree (not under a "Displays" parent)
+            if displays:
+                for i, d in enumerate(displays):
+                    prim = " (Primary)" if d.get('is_primary', False) else ""
+                    int_disp = d.get('is_internal', False)
+                    root_node.setdefault('children', []).append({
+                        'model': f"{d['resolution']}  {d['name']}{prim}",
+                        'name': d['name'], 'children': [], 'hops': 1,
+                        'is_hub': False, 'is_internal': int_disp, 'is_display': True, 'port': 0
+                    })
+
+            self._print_tree(usb_tree, "  ", _show_internal=True)
+        else:
+            self.tree_text.insert(tk.END, "  No USB devices found.\n")
+        
+        # NEW: Add Overall rating section with TAGGING and VERDICT
+        self._print_section_header("Overall rating")
+        self._print_tag("overall.verdict")
+        for v in stability.get('verdicts', []):
+            self._print_verdict(v)
+        
+        # Print overall warnings if any
+        overall_warnings = [v for v in stability.get('verdicts', []) if v.get('warning')]
+        if overall_warnings:
+            self._print_tag("overall.warnings")
+            for w in overall_warnings:
+                self.tree_text.insert(tk.END, f"    ! {w['name']}: {w['warning']}\n")
+        self.tree_text.insert(tk.END, "\n")
+        self._print_section_header("=" * 31 + "PER PORT" + "=" * 31)
+        self.tree_text.insert(tk.END, "\n")
+        
+        # After the tree, show PORT sections
         # PER PORT - EXTERNAL
         root_orig = usb_tree[0] if usb_tree else {}
         orig_children = list(root_orig.get('children', []))
@@ -441,26 +485,6 @@ class ProAVShokoGUI:
                 else:
                     external_verdicts.append(v)
         
-        # Build the tree from the usb_tree
-        if usb_tree:
-            root_node = usb_tree[0]
-
-            # Add displays directly into tree (not under a "Displays" parent)
-            if displays:
-                for i, d in enumerate(displays):
-                    prim = " (Primary)" if d.get('is_primary', False) else ""
-                    int_disp = d.get('is_internal', False)
-                    root_node.setdefault('children', []).append({
-                        'model': f"{d['resolution']}  {d['name']}{prim}",
-                        'name': d['name'], 'children': [], 'hops': 1,
-                        'is_hub': False, 'is_internal': int_disp, 'is_display': True, 'port': 0
-                    })
-
-            self._print_tree(usb_tree, "", _show_internal=True)
-        else:
-            self.tree_text.insert(tk.END, "No USB devices found.\n")
-        
-        # After the tree, show PORT sections
         if orig_children:
             self.tree_text.insert(tk.END, "\n")
             
@@ -480,15 +504,11 @@ class ProAVShokoGUI:
                     self._print_port_tree(child)
                     self.tree_text.insert(tk.END, "\n")
                 
-                # VERDICT for external ports
+                # NEW: VERDICT for external ports
                 if external_verdicts:
                     self.tree_text.insert(tk.END, "VERDICT\n")
                     for v in external_verdicts:
-                        status_char = '+' if v['color'] == 'green' else ('~' if v['color'] == 'orange' else '!')
-                        if 'current_hubs' in v:
-                            self.tree_text.insert(tk.END, f"  {status_char} {v['name']:<20s} {v['status']:<9s} hops {v['current_hops']}/{v['max_hops']}  tiers {v['current_tiers']}/{v['max_tiers']}  hubs {v['current_hubs']}/{v['max_hubs']}\n")
-                        else:
-                            self.tree_text.insert(tk.END, f"  {status_char} {v['name']:<20s} {v['status']:<9s} hops {v['current_hops']}/{v['max_hops']}  tiers {v['current_tiers']}/{v['max_tiers']}\n")
+                        self._print_verdict(v)
                 
                 # Print separator
                 self.tree_text.insert(tk.END, "\n  " + "- " * 35 + "\n")
@@ -496,8 +516,7 @@ class ProAVShokoGUI:
             # INTERNAL section
             internal_children = [c for c in orig_children if c.get('is_internal', False) and not c.get('is_display', False)]
             if internal_children:
-                self.tree_text.insert(tk.END, "=" * 31 + "INTERNAL" + "=" * 31)
-                self.tree_text.insert(tk.END, "\n")
+                self._print_section_header("=" * 31 + "INTERNAL" + "=" * 31)
                 
                 for idx, child in enumerate(internal_children):
                     # Print port header
@@ -512,15 +531,19 @@ class ProAVShokoGUI:
                     self._print_port_tree(child)
                     self.tree_text.insert(tk.END, "\n")
                 
-                # VERDICT for internal ports
+                # NEW: VERDICT for internal ports
                 if internal_verdicts:
                     self.tree_text.insert(tk.END, "VERDICT\n")
                     for v in internal_verdicts:
-                        status_char = '+' if v['color'] == 'green' else ('~' if v['color'] == 'orange' else '!')
-                        if 'current_hubs' in v:
-                            self.tree_text.insert(tk.END, f"  {status_char} {v['name']:<20s} {v['status']:<9s} hops {v['current_hops']}/{v['max_hops']}  tiers {v['current_tiers']}/{v['max_tiers']}  hubs {v['current_hubs']}/{v['max_hubs']}\n")
-                        else:
-                            self.tree_text.insert(tk.END, f"  {status_char} {v['name']:<20s} {v['status']:<9s} hops {v['current_hops']}/{v['max_hops']}  tiers {v['current_tiers']}/{v['max_tiers']}\n")
+                        self._print_verdict(v)
+        
+        # PRINT TAGGING SECTIONS AT THE END (like CLI)
+        self.tree_text.insert(tk.END, "\n")
+        self.tree_text.insert(tk.END, "TAGGING\n")
+        self.tree_text.insert(tk.END, "TAGGING: xxx.tree\n")
+        self.tree_text.insert(tk.END, "TAGGING: xxx.score\n")
+        self.tree_text.insert(tk.END, "TAG: xxx.warnings\n")
+        self.tree_text.insert(tk.END, "\n")
 
     def _print_tree(self, nodes, prefix="", _show_internal=False, _parent_is_internal=False):
         """Print tree with box-drawing characters, matching CLI exactly."""
@@ -628,6 +651,28 @@ class ProAVShokoGUI:
                             iface_desc
                 return f"{iface_tag} {mi}{suffix}".strip()
         return f"{model} ({device_info})" if device_info else model
+
+    def _print_tag(self, tag: str):
+        """Print a machine-parseable tag for GUI parsing. Only tag name, no [TAG:] wrapper."""
+        self.tree_text.insert(tk.END, f"\n    {tag}\n")
+
+    def _print_verdict(self, v):
+        """Print a single verdict line with hops/tiers/hubs. Matches CLI exactly."""
+        status_char = '+' if v['color'] == 'green' else ('~' if v['color'] == 'orange' else '!')
+        hubs_str = f"hubs {v['current_hubs']}/{v['max_hubs']}  " if 'current_hubs' in v else ""
+        desc = v.get('description', v.get('name', ''))
+        self.tree_text.insert(tk.END,
+            f"    {status_char} {desc:<22s} "
+            f"{v['status']:<9s} "
+            f"hops {v['current_hops']}/{v['max_hops']}  "
+            f"tiers {v['current_tiers']}/{v['max_tiers']}  "
+            f"{hubs_str}\n")
+
+    def _print_section_header(self, title):
+        """Print a section header with separator. Matches CLI formatting."""
+        self.tree_text.insert(tk.END, f"\n{title}")
+        self.tree_text.insert(tk.END, "-" * 70)
+        self.tree_text.insert(tk.END, "\n")
 
     def _update_log(self):
         """Update the log widget from the queue (stdout redirection)."""
