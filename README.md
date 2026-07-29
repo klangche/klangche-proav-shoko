@@ -16,9 +16,7 @@ Download the latest release for your platform:
 
 | Platform | Download |
 |----------|----------|
-| **Windows** | [`ProAV Shoko Windows <version>.exe`](https://github.com/klangche/klangche-proav-shoko/releases) — no install required |
-| **macOS** (Intel + Apple Silicon) | [`ProAV Shoko MacOS Universal <version>`](https://github.com/klangche/klangche-proav-shoko/releases) — universal binary |
-| **Linux** | [`ProAV Shoko Linux <version>`](https://github.com/klangche/klangche-proav-shoko/releases) — standalone executable |
+| **Windows, MacOS, Linux** | [`ProAV Shoko  <version>.exe`](https://github.com/klangche/klangche-proav-shoko/releases) — Download and run!
 
 **Python (any platform)**
 ```bash
