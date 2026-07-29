@@ -299,7 +299,7 @@ def main(csv_path=None):
         for w in overall_warnings:
             print(f"    ! {w['name']}: {w['warning']}")
     print()
-    print("=" * 31 + "PER PORT" + "=" * 31)
+    print("PER PORT" + "=" * 31)
     print()
 
     ports_data = stability.get('ports', [])
@@ -322,7 +322,7 @@ def main(csv_path=None):
     sep = "  " + "- " * 35
 
     def print_section(header, is_internal_filter, tag_prefix):
-        print("-" * 31 + header + "-" * 31)
+        print(header + "-" * 31)
         _print_tag(f"{tag_prefix}.section")
         first = True
         for idx, child in enumerate(orig_children):

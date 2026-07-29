@@ -541,7 +541,7 @@ function Show-Report {
         elseif ($portInfo) { foreach ($v in $portInfo.verdicts) { Write-Verdict $v } }
     }
     function Write-SectionGroup { param([string]$header, [scriptblock]$filter)
-        Write-Host ("-" * 31) -NoNewline; Write-Host $header -NoNewline; Write-Host ("-" * 31)
+        Write-Host $header -NoNewline; Write-Host ("-" * 31)
         $first = $true
         for ($idx = 0; $idx -lt $origChildren.Count; $idx++) {
             $child = $origChildren[$idx]
@@ -615,7 +615,7 @@ function Save-HtmlReport {
         $vd = if ($v.description) { $v.description } else { $v.name }
         $verdictLines += "    $sc $($vd.PadRight(22)) $($v.status.PadRight(9)) hops $($v.currentHops)/$($v.maxHops)  tiers $($v.currentTiers)/$($v.maxTiers)  $hs"
     }
-    $portLines = @("===============================PER PORT===============================")
+    $portLines = @("PER PORT===============================")
     foreach ($p in $stability.ports) {
         $ep2 = if ($p.devices.Count -eq 1) { "endpoint" } else { "endpoints" }
         $portLines += "  $($p.label) ($($p.devices.Count) $ep2, hops=$($p.maxHops), tiers=$($p.maxTiers), hubs=$($p.externalHubs))"

@@ -37,9 +37,11 @@ def main():
 
     if want_gui:
         try:
+            import customtkinter as ctk
+            ctk.set_appearance_mode("system")
+            ctk.set_default_color_theme("blue")
             from src.gui import ProAVShokoGUI
-            import tkinter as tk
-            root = tk.Tk()
+            root = ctk.CTk()
             app = ProAVShokoGUI(root, args.csv_path)
             root.mainloop()
         except ImportError as e:

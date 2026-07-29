@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.join(BASE_DIR, "src"))
 
 # --- Configuration ---
 APP_NAME = "ProAV Shoko"
-APP_VERSION = "0.1.0-alpha.0"
+APP_VERSION = "1.0.0"
 MAIN_SCRIPT = "src/main.py"
 
 # Data files to include (baked into the exe)
@@ -22,20 +22,13 @@ DATAS = [
 
 # Hidden imports
 HIDDEN_IMPORTS = [
+    "customtkinter",
     "usbmonitor",
     "screeninfo",
     "weasyprint",
     "weasyprint.css",
     "weasyprint.layout",
     "weasyprint.text",
-    "cairo",
-    "pangocairo",
-    "gi",
-    "gi.repository.Gtk",
-    "gi.repository.Gdk",
-    "gi.repository.GdkPixbuf",
-    "gi.repository.Pango",
-    "gi.repository.PangoCairo",
     "tkinter",
     "tkinter.ttk",
     "tkinter.filedialog",
@@ -97,7 +90,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
