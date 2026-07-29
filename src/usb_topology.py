@@ -6,8 +6,11 @@ Linux:    parsed from lsusb -t tree, matched by VID:PID
 macOS:    parsed from system_profiler SPUSBDataType -json tree
 """
 
-import sys, re, json, subprocess
+import sys, re, json
 from typing import Dict, List, Optional, Any
+
+# Import subprocess separately to allow patching
+import subprocess
 
 INSTANCE_PREFIX_PATTERN = re.compile(r'^MSFT(\d+)')
 
@@ -124,21 +127,39 @@ def _win_parent_map() -> Dict[str, str]:
     """Query Windows PnP parent relationships via inline PowerShell."""
     ps_cmd = (
         'Get-PnpDevice -PresentOnly | '
-        'Where-Object { $_.InstanceId -like \"USB*\" -or $_.InstanceId -like \"USBSTOR*\" } | '
+        'Where-Object { $_.InstanceId -like "USB*\" -or $_.InstanceId -like "USBSTOR*" } | '
         'ForEach-Object { '
         '$p = $null; '
-        'try { $pp = $_ | Get-PnpDeviceProperty -KeyName \"DEVPKEY_Device_Parent\" -ErrorAction Stop; '
+        'try { $pp = $_ | Get-PnpDeviceProperty -KeyName "DEVPKEY_Device_Parent\" -ErrorAction Stop; '
         '$p = $pp.Data } catch {}; '
         '[PSCustomObject]@{ InstanceId = $_.InstanceId; Parent = $p } '
         '} | ConvertTo-Json -Compress'
     )
     try:
+        import os
+        flags = 0
+        if hasattr(os, 'CREATE_NO_WINDOW'):
+            flags = os.CREATE_NO_WINDOW
+        elif os.name == 'nt':
+            flags = 0x08000000  # CREATE_NO_WINDOW
         out = subprocess.run(
             ['powershell', '-NoProfile', '-Command', ps_cmd],
-            capture_output=True, text=True, timeout=30
+            capture_output=True, text=True, timeout=30, creationflags=flags
         )
         if not out.stdout:
             return {}
+        pairs = json.loads(out.stdout)
+        if isinstance(pairs, dict):
+            pairs = [pairs]
+        return {p['InstanceId']: p['Parent'] for p in pairs if p.get('Parent')}
+    except Exception:
+        return {}
+        pairs = json.loads(out.stdout)
+        if isinstance(pairs, dict):
+            pairs = [pairs]
+        return {p['InstanceId']: p['Parent'] for p in pairs if p.get('Parent')}
+    except Exception:
+        return {}
         pairs = json.loads(out.stdout)
         if isinstance(pairs, dict):
             pairs = [pairs]

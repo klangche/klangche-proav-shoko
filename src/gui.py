@@ -3,7 +3,7 @@ GUI for ProAV Shoko - live overview with tree and log
 """
 
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import filedialog, messagebox
 import threading
 import queue
 import sys
@@ -44,12 +44,15 @@ class ProAVShokoGUI:
     def __init__(self, root, csv_path=None):
         self.root = root
         self.root.title("ProAV Shoko - USB Detective")
-        try:
-            import ctypes
-            ctypes.windll.shcore.SetProcessDpiAwareness(1)
-        except Exception:
-            pass
-        self.root.geometry("1400x800")
+        
+        # Set window to center screen
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        window_width = 1400
+        window_height = 800
+        x_position = (screen_width - window_width) // 2
+        y_position = (screen_height - window_height) // 2
+        self.root.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
         self.root.minsize(700, 500)
 
         # Variables
@@ -64,12 +67,19 @@ class ProAVShokoGUI:
         self.log_panel_visible = True
         self.csv_path = csv_path
 
-        # Colors
+        # Modern color scheme
         self.colors = {
-            'bg': '#1a1a2e',
-            'bg_light': '#16213e',
+            'bg': '#1e293b',
+            'bg_light': '#334155',
             'bg_card': '#1e2a4a',
-            'fg': '#e0e0e0',
+            'accent': '#3b82f6',
+            'accent_hover': '#60a5fa',
+            'success': '#10b981',
+            'warning': '#f59e0b',
+            'error': '#ef4444',
+            'text': '#f1f5f9',
+            'text_secondary': '#94a3b8',
+            'border': '#334155',
             'green': '#00cc66',
             'yellow': '#ffcc00',
             'orange': '#ff8800',
@@ -77,14 +87,8 @@ class ProAVShokoGUI:
             'blue': '#00d4ff'
         }
 
-        # Set theme
+        # Set modern theme - simplified for compatibility
         self.root.configure(bg=self.colors['bg'])
-        style = ttk.Style()
-        style.theme_use('clam')
-        style.configure('TFrame', background=self.colors['bg'])
-        style.configure('TLabelframe', background=self.colors['bg'], foreground=self.colors['fg'])
-        style.configure('TLabelframe.Label', background=self.colors['bg'], foreground=self.colors['fg'])
-        style.configure('TPanedwindow', background=self.colors['bg'])
 
         # Build GUI
         self._build_gui()
@@ -99,34 +103,35 @@ class ProAVShokoGUI:
         self._update_log()
 
     def _build_gui(self):
-        """Build the interface."""
-        # Main frame
-        main_frame = ttk.Frame(self.root)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        """Build the interface using modern customtkinter themes."""
+        # Main container
+        main_frame = tk.Frame(self.root, bg=self.colors['bg'])
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
         # === TOP: Start / Reset buttons ===
-        top_frame = ttk.Frame(main_frame)
-        top_frame.pack(fill=tk.X, pady=(0, 10))
+        top_frame = tk.Frame(main_frame, bg=self.colors['bg'])
+        top_frame.pack(fill=tk.X, pady=(0, 15))
 
         # Platform info
-        self.platform_label = ttk.Label(
+        self.platform_label = tk.Label(
             top_frame,
             text="Click Start to begin",
-            font=('Segoe UI', 10),
-            foreground=self.colors['blue']
+            font=('Segoe UI', 12),
+            bg=self.colors['bg'],
+            fg=self.colors['accent']
         )
         self.platform_label.pack(side=tk.LEFT)
 
         # Buttons on the right
-        btn_right_frame = ttk.Frame(top_frame)
+        btn_right_frame = tk.Frame(top_frame, bg=self.colors['bg'])
         btn_right_frame.pack(side=tk.RIGHT)
 
         # Reset button (hidden until analysis starts)
         self.reset_btn = tk.Button(
             btn_right_frame,
             text="Reset",
-            font=('Segoe UI', 10, 'bold'),
-            bg=self.colors['blue'],
+            font=('Segoe UI', 11, 'bold'),
+            bg=self.colors['accent'],
             fg='white',
             padx=15,
             pady=5,
@@ -138,8 +143,8 @@ class ProAVShokoGUI:
         self.stop_btn = tk.Button(
             btn_right_frame,
             text="Stop",
-            font=('Segoe UI', 10, 'bold'),
-            bg=self.colors['orange'],
+            font=('Segoe UI', 11, 'bold'),
+            bg=self.colors['error'],
             fg='white',
             padx=15,
             pady=5,
@@ -151,8 +156,8 @@ class ProAVShokoGUI:
         self.start_btn = tk.Button(
             btn_right_frame,
             text="Start Analysis",
-            font=('Segoe UI', 10, 'bold'),
-            bg='#00cc66',
+            font=('Segoe UI', 11, 'bold'),
+            bg=self.colors['success'],
             fg='white',
             padx=15,
             pady=5,
@@ -162,113 +167,106 @@ class ProAVShokoGUI:
         self.start_btn.pack(side=tk.RIGHT, padx=(10, 0))
 
         # === MIDDLE: Tree (left, ~70%) + Log (right, ~30%), resizable ===
-        self.middle_paned = ttk.PanedWindow(main_frame, orient=tk.HORIZONTAL)
-        self.middle_paned.pack(fill=tk.BOTH, expand=True)
+        middle_container = tk.Frame(main_frame, bg=self.colors['bg'])
+        middle_container.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
 
         # Left: USB tree with stability - the dominant panel
-        self.left_frame = ttk.LabelFrame(self.middle_paned, text="USB Tree & Stability", padding=10)
+        self.left_frame = tk.Frame(middle_container, bg=self.colors['bg_card'], relief=tk.RAISED, borderwidth=1)
+        self.left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+
+        # Tree header
+        tree_header = tk.Frame(self.left_frame, bg=self.colors['bg_light'], height=40)
+        tree_header.pack(fill=tk.X)
+        tree_header_label = tk.Label(
+            tree_header,
+            text="USB Tree & Stability",
+            font=('Segoe UI', 13, 'bold'),
+            bg=self.colors['bg_light'],
+            fg=self.colors['text']
+        )
+        tree_header_label.pack(side=tk.LEFT, padx=15, pady=8)
+
+        # Tree text area
+        tree_frame = tk.Frame(self.left_frame, bg=self.colors['bg_card'])
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
 
         self.tree_text = tk.Text(
-            self.left_frame,
+            tree_frame,
             bg=self.colors['bg_card'],
-            fg=self.colors['fg'],
-            font=('Courier New', 10),
-            wrap=tk.NONE,
+            fg=self.colors['text'],
+            font=('Consolas', 11),
+            wrap=tk.WORD,
             relief=tk.FLAT,
-            padx=10,
-            pady=10
+            borderwidth=0
         )
         self.tree_text.pack(fill=tk.BOTH, expand=True)
 
-        tree_scroll_y = ttk.Scrollbar(self.left_frame, orient=tk.VERTICAL, command=self.tree_text.yview)
-        tree_scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
-        tree_scroll_x = ttk.Scrollbar(self.left_frame, orient=tk.HORIZONTAL, command=self.tree_text.xview)
-        tree_scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
-        self.tree_text.configure(yscrollcommand=tree_scroll_y.set, xscrollcommand=tree_scroll_x.set)
-
         # Right: Live log - connect/disconnect/re-enumeration events as they happen
-        self.right_frame = ttk.LabelFrame(self.middle_paned, text="Live Log", padding=10)
+        self.right_frame = tk.Frame(middle_container, bg=self.colors['bg_card'], relief=tk.RAISED, borderwidth=1)
+        self.right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(0, 0))
+
+        # Log header
+        log_header = tk.Frame(self.right_frame, bg=self.colors['bg_light'], height=40)
+        log_header.pack(fill=tk.X)
+        log_header_label = tk.Label(
+            log_header,
+            text="Live Log",
+            font=('Segoe UI', 13, 'bold'),
+            bg=self.colors['bg_light'],
+            fg=self.colors['text']
+        )
+        log_header_label.pack(side=tk.LEFT, padx=15, pady=8)
+
+        # Log text area - using standard Text widget for better tag support
+        log_frame = tk.Frame(self.right_frame, bg=self.colors['bg_card'])
+        log_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
 
         self.log_text = tk.Text(
-            self.right_frame,
-            bg='#0a0a1a',
-            fg='#88ccff',
-            font=('Courier New', 9),
+            log_frame,
+            bg=self.colors['bg_dark'],
+            fg=self.colors['text'],
+            font=('Consolas', 10),
             wrap=tk.WORD,
             relief=tk.FLAT,
-            padx=10,
-            pady=10
+            borderwidth=0
         )
         self.log_text.pack(fill=tk.BOTH, expand=True)
 
-        log_scroll_y = ttk.Scrollbar(self.right_frame, orient=tk.VERTICAL, command=self.log_text.yview)
-        log_scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
-        self.log_text.configure(yscrollcommand=log_scroll_y.set)
-
-        self.log_text.tag_configure('event_connect', foreground=self.colors['green'])
+        self.log_text.tag_configure('event_connect', foreground=self.colors['success'])
         self.log_text.tag_configure('event_disconnect', foreground=self.colors['orange'])
-        self.log_text.tag_configure('timestamp', foreground='#666666')
+        self.log_text.tag_configure('timestamp', foreground=self.colors['text_secondary'])
 
-        self.middle_paned.add(self.left_frame, weight=7)
-        self.middle_paned.add(self.right_frame, weight=3)
-
-        # === BOTTOM: Report buttons ===
-        bottom_frame = ttk.Frame(main_frame)
-        bottom_frame.pack(fill=tk.X, pady=(10, 0))
+        # === BOTTOM: Report and Action buttons ===
+        bottom_frame = tk.Frame(main_frame, bg=self.colors['bg'])
+        bottom_frame.pack(fill=tk.X)
 
         # Status
-        self.status_label = ttk.Label(
+        self.status_label = tk.Label(
             bottom_frame,
             text="Ready",
-            font=('Segoe UI', 9),
-            foreground=self.colors['green']
+            font=('Segoe UI', 11),
+            bg=self.colors['bg'],
+            fg=self.colors['success']
         )
         self.status_label.pack(side=tk.LEFT)
 
         # Buttons
-        btn_frame = ttk.Frame(bottom_frame)
+        btn_frame = tk.Frame(bottom_frame, bg=self.colors['bg'])
         btn_frame.pack(side=tk.RIGHT)
 
-        # Export CSV button
-        csv_btn = tk.Button(
-            btn_frame,
-            text="Export CSV Limits",
-            font=('Segoe UI', 9, 'bold'),
-            bg='#2d2d44',
-            fg='white',
-            padx=10,
-            pady=5,
-            command=self._export_csv_limits,
-            cursor='hand2'
-        )
-        csv_btn.pack(side=tk.LEFT, padx=(0, 10))
-
-        # Combined report button with format/port selection
+        # Report button
         report_btn = tk.Button(
             btn_frame,
             text="Generate Report...",
-            font=('Segoe UI', 10, 'bold'),
-            bg='#00d4ff',
+            font=('Segoe UI', 11, 'bold'),
+            bg=self.colors['accent'],
             fg='white',
             padx=15,
             pady=5,
             command=self._generate_report_dialog,
             cursor='hand2'
         )
-        report_btn.pack(side=tk.LEFT, padx=(0, 10))
-
-        log_btn = tk.Button(
-            btn_frame,
-            text="Save Logs",
-            font=('Segoe UI', 10, 'bold'),
-            bg='#2d2d44',
-            fg='white',
-            padx=15,
-            pady=5,
-            command=self._save_logs_dialog,
-            cursor='hand2'
-        )
-        log_btn.pack(side=tk.LEFT)
+        report_btn.pack(side=tk.LEFT)
 
     def _on_window_resize(self, event):
         """Hide the live log panel when the window gets narrow, show it again otherwise."""
@@ -279,10 +277,12 @@ class ProAVShokoGUI:
         should_show = width >= NARROW_WINDOW_THRESHOLD
 
         if should_show and not self.log_panel_visible:
-            self.middle_paned.add(self.right_frame, weight=3)
+            # Switch visibility of right frame using grid/pack differently
+            self.right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(0, 0))
             self.log_panel_visible = True
         elif not should_show and self.log_panel_visible:
-            self.middle_paned.forget(self.right_frame)
+            # Hide right frame
+            self.right_frame.pack_forget()
             self.log_panel_visible = False
 
     def _on_start_clicked(self):
@@ -296,7 +296,7 @@ class ProAVShokoGUI:
         """Handle Stop button click — stops live monitoring, keeps results."""
         self._stop_monitoring()
         self.stop_btn.pack_forget()
-        self.status_label.config(text="Stopped", foreground=self.colors['orange'])
+        self.status_label.configure(text="Stopped", text_color=self.colors['error'])
 
     def _start_analysis(self):
         """Start the analysis in a background thread."""
@@ -304,9 +304,9 @@ class ProAVShokoGUI:
             return
 
         self.is_running = True
-        self.status_label.config(text="Analyzing...", foreground=self.colors['yellow'])
-        self.log_text.delete(1.0, tk.END)
-        self.tree_text.delete(1.0, tk.END)
+        self.status_label.configure(text="Analyzing...", text_color=self.colors['warning'])
+        self.log_text.delete('0.0', tk.END)
+        self.tree_text.delete('0.0', tk.END)
 
         # Redirect stdout to the log
         sys.stdout = LogRedirector(self.log_text, self.log_queue)
@@ -316,6 +316,61 @@ class ProAVShokoGUI:
         thread.start()
 
     def _run_analysis(self):
+        """Run the initial analysis in the background, then start live monitoring."""
+        try:
+            # 1. Platform
+            self.platform_info = PlatformUtils.get_platform_info()
+            print("=" * 60)
+            print("  KLANGCHE PROAV SHOKO - USB DETECTIVE")
+            print("=" * 60)
+            print(f"\n[+] Platform: {self.platform_info['os']} {self.platform_info['version']}")
+            print(f"[+] Architecture: {self.platform_info['architecture']}")
+            if self.platform_info['is_apple_silicon']:
+                print("[+] Apple Silicon detected!")
+
+            self.root.after(0, self._update_platform_label)
+
+            # 2. USB analysis - load limits from custom data file if specified, otherwise default
+            self.usb_analyzer = USBAnalyzer(self.csv_path) if self.csv_path else USBAnalyzer()
+            if self.csv_path:
+                print(f"[+] Loaded limits from: {self.csv_path}")
+            elif Path("usb_data.csv").exists():
+                print(f"[+] Loaded limits from: usb_data.csv")
+
+            print("\n[+] Scanning USB devices...")
+            self._refresh_tree_and_stability()
+
+            # 3. Display information
+            print("\n[+] Scanning displays...")
+            self.display_analyzer = DisplayAnalyzer()
+
+            print("\n[+] Initial scan complete. Starting live monitoring...")
+            self.root.after(0, lambda: self.status_label.configure(
+                text="Monitoring (live)",
+                text_color=self.colors['success']
+            ))
+
+            # 4. Start live connect/disconnect monitoring. This keeps
+            # running in usbmonitor's own background thread until
+            # stop_live_monitoring() is called (on reset or window close).
+            self.usb_analyzer.start_live_monitoring(
+                on_connect=self._on_device_connect,
+                on_disconnect=self._on_device_disconnect,
+                check_every_seconds=0.1
+            )
+            self.is_monitoring = True
+
+        except Exception as e:
+            err_msg = str(e)
+            print(f"\n[!] Error: {err_msg}")
+            self.root.after(0, lambda m=err_msg: self.status_label.configure(
+                text=f"Error: {m}",
+                text_color=self.colors['error']
+            ))
+        finally:
+            self.is_running = False
+            if hasattr(sys.stdout, 'original_stdout'):
+                sys.stdout = sys.stdout.original_stdout
         """Run the initial analysis in the background, then start live monitoring."""
         try:
             # 1. Platform
@@ -356,7 +411,7 @@ class ProAVShokoGUI:
             self.usb_analyzer.start_live_monitoring(
                 on_connect=self._on_device_connect,
                 on_disconnect=self._on_device_disconnect,
-                check_every_seconds=1.0
+                check_every_seconds=0.1
             )
             self.is_monitoring = True
 
@@ -420,89 +475,150 @@ class ProAVShokoGUI:
             self.platform_label.config(text=text)
 
     def _update_tree_display(self, usb_tree, hops_data, stability, displays):
-        """Update the tree display."""
+        """Update the tree display to match CLI exactly."""
         self.tree_text.delete(1.0, tk.END)
 
-        # Current hops/tiers/hubs/endpoints
+        # Overall summary
+        overall = stability.get('overall_worst', 'STABLE')
+        mh = stability.get('max_hops', 0)
+        mt = stability.get('max_tiers', 0)
+        mhub = stability.get('max_hubs', 0)
         total = stability.get('total_endpoints', 0)
         ep_label = "endpoint" if total == 1 else "endpoints"
+        self.tree_text.insert(tk.END, f"Overall: {overall} ({total} {ep_label}, hops={mh}, tiers={mt}, hubs={mhub})\n")
         self.tree_text.insert(tk.END, "\n")
-        self.tree_text.insert(
-            tk.END,
-            f"Current: {total} {ep_label}, {hops_data['max_hops']} hops, {hops_data['max_tiers']} tiers, {stability.get('max_hubs', 0)} hubs\n",
-            ('info',)
-        )
 
-        # Stability heading
-        self.tree_text.insert(tk.END, "STABILITY VERDICT\n", ('header',))
-        self.tree_text.insert(tk.END, "-" * 50 + "\n", ('header',))
+        # VERDICTS
+        self.tree_text.insert(tk.END, "=" * 31 + "VERDICT" + "=" * 31)
+        self.tree_text.insert(tk.END, "\n")
+        for v in stability.get('verdicts', []):
+            status_char = '+' if v['color'] == 'green' else ('~' if v['color'] == 'orange' else '!')
+            hubs_str = f"hubs {v['current_hubs']}/{v['max_hubs']}  " if 'current_hubs' in v else ""
+            desc = v.get('description', v.get('name', ''))
+            self.tree_text.insert(tk.END, f"  {status_char} {desc:<22s} ")
+            self.tree_text.insert(tk.END, f"{v['status']:<9s} ")
+            self.tree_text.insert(tk.END, f"hops {v['current_hops']}/{v['max_hops']}  ")
+            self.tree_text.insert(tk.END, f"tiers {v['current_tiers']}/{v['max_tiers']}  ")
+            self.tree_text.insert(tk.END, f"{hubs_str}\n")
+        self.tree_text.insert(tk.END, "\n")
 
-        groups = stability.get('groups', {})
-        for arch, verdicts in groups.items():
-            self.tree_text.insert(tk.END, f"\n{arch}\n", ('arch_header',))
-            for v in verdicts:
-                emoji = v['emoji']
-                name = v['name']
-                status = v['status']
-                color = v['color']
-                tag = f'stability_{color}'
-                self.tree_text.insert(tk.END, f"  {emoji} {name}  ", (tag,))
-                self.tree_text.insert(tk.END, f"({status})  ", ('info',))
-                hubs_str = f" / {v['max_hubs']} hubs" if 'max_hubs' in v else ""
-                self.tree_text.insert(
-                    tk.END,
-                    f"max {v['max_hops']} hops / {v['max_tiers']} tiers{hubs_str}\n",
-                    ('dim',)
-                )
-
-        # Warnings
-        warnings = [v for v in stability.get('verdicts', []) if not v['is_stable'] or v['warning']]
-        if warnings:
-            self.tree_text.insert(tk.END, "\nWARNINGS:\n", ('warning_header',))
-            for w in warnings:
-                self.tree_text.insert(
-                    tk.END,
-                    f"  - {w['name']}: {w['warning']}\n",
-                    ('warning',)
-                )
-
-        # USB tree
-        self.tree_text.insert(tk.END, "\n\nUSB TREE STRUCTURE\n", ('header',))
-        self.tree_text.insert(tk.END, "-" * 50 + "\n", ('header',))
-
+        # FULL USB & Display Tree
+        self.tree_text.insert(tk.END, "  Full USB & Display Tree")
         if usb_tree:
-            self._render_tree_to_text(usb_tree, 0)
+            root_node = usb_tree[0]
+
+            # Add displays directly into tree (not under a "Displays" parent)
+            if displays:
+                for i, d in enumerate(displays):
+                    prim = " (Primary)" if d.get('is_primary', False) else ""
+                    int_disp = d.get('is_internal', False)
+                    root_node.setdefault('children', []).append({
+                        'model': f"{d['resolution']}  {d['name']}{prim}",
+                        'name': d['name'], 'children': [], 'hops': 1,
+                        'is_hub': False, 'is_internal': int_disp, 'is_display': True, 'port': 0
+                    })
+
+            self._print_tree(usb_tree, "  ", _show_internal=True)
         else:
-            self.tree_text.insert(tk.END, "  No USB devices found.\n", ('info',))
+            self.tree_text.insert(tk.END, "  No USB devices found.\n")
+        self.tree_text.insert(tk.END, "\n")
 
-        # Displays
-        self.tree_text.insert(tk.END, "\nDISPLAY INFORMATION\n", ('header',))
-        self.tree_text.insert(tk.END, "-" * 50 + "\n", ('header',))
+        # PER PORT - EXTERNAL
+        root_orig = usb_tree[0] if usb_tree else {}
+        orig_children = list(root_orig.get('children', []))
+        self.tree_text.insert(tk.END, "=" * 31 + "EXTERNAL" + "=" * 31)
+        self.tree_text.insert(tk.END, "\n")
+        self._print_port_section(orig_children, ports_data=stability.get('ports', []), is_internal_filter=lambda c: not c.get('is_internal', False))
+        self.tree_text.insert(tk.END, "\n" + "  " + "- " * 35 + "\n")
 
-        if displays:
-            for display in displays:
-                primary = " (Primary)" if display.get('is_primary', False) else ""
-                self.tree_text.insert(
-                    tk.END,
-                    f"  {display['resolution']}  {display['name']}{primary}\n",
-                    ('info',)
-                )
-        else:
-            self.tree_text.insert(tk.END, "  No displays found.\n", ('info',))
+        # PER PORT - INTERNAL
+        self.tree_text.insert(tk.END, "=" * 31 + "INTERNAL" + "=" * 31)
+        self.tree_text.insert(tk.END, "\n")
+        self._print_port_section(orig_children, ports_data=stability.get('ports', []), is_internal_filter=lambda c: c.get('is_internal', False))
+        self.tree_text.insert(tk.END, "\n")
 
-        # Configure tags for colors
-        self.tree_text.tag_configure('header', font=('Courier New', 11, 'bold'), foreground=self.colors['blue'])
-        self.tree_text.tag_configure('arch_header', font=('Courier New', 10, 'bold'), foreground=self.colors['blue'])
-        self.tree_text.tag_configure('warning_header', font=('Courier New', 10, 'bold'), foreground=self.colors['orange'])
-        self.tree_text.tag_configure('warning', font=('Courier New', 10), foreground=self.colors['orange'])
-        self.tree_text.tag_configure('info', foreground=self.colors['fg'])
-        self.tree_text.tag_configure('dim', foreground='#666666')
-        self.tree_text.tag_configure('stability_green', foreground=self.colors['green'])
-        self.tree_text.tag_configure('stability_yellow', foreground=self.colors['yellow'])
-        self.tree_text.tag_configure('stability_orange', foreground=self.colors['orange'])
-        self.tree_text.tag_configure('stability_red', foreground=self.colors['red'])
+    def _print_tree(self, nodes, prefix="", _show_internal=False, _parent_is_internal=False):
+        """Print tree with box-drawing characters, matching CLI exactly."""
+        for i, node in enumerate(nodes):
+            is_last = i == len(nodes) - 1
+            connector = "└── " if is_last else "├── "
 
-        self.tree_text.see(1.0)
+            badges = []
+            if node.get('is_hub'):
+                badges.append('HUB')
+            if node.get('is_display'):
+                badges.append('DISPLAY')
+            if node.get('is_internal') and _show_internal and not _parent_is_internal:
+                badges.insert(0, 'INTERNAL')
+
+            badge_str = ""
+            if badges:
+                badge_str = "[" + "][".join(badges) + "] "
+
+            port = node.get('port', 0)
+            show_port = port and not node.get('is_composite_interface')
+            port_info_str = f" [port {port}]" if show_port else ""
+
+            label = self._node_label(node)
+            self.tree_text.insert(tk.END, f"{prefix}{connector}{badge_str}{label}{port_info_str}\n")
+
+            if node.get('children'):
+                child_prefix = prefix + ("    " if is_last else "│   ")
+                new_parent_int = _parent_is_internal or node.get('is_internal', False)
+                self._print_tree(node['children'], child_prefix, _show_internal, new_parent_int)
+
+    def _print_port_section(self, orig_children, ports_data, is_internal_filter):
+        """Print a section (EXTERNAL or INTERNAL) with per-port info."""
+        sep = "  " + "- " * 35
+        first = True
+        for idx, child in enumerate(orig_children):
+            if child.get('is_display'):
+                continue
+            if not is_internal_filter(child):
+                continue
+            if not first:
+                self.tree_text.insert(tk.END, "\n")
+            self._print_port_child(child, idx, ports_data)
+            self.tree_text.insert(tk.END, "\n")
+            self.tree_text.insert(tk.END, sep)
+            self.tree_text.insert(tk.END, "\n")
+            first = False
+
+    def _print_port_child(self, child, idx, ports_data):
+        """Print a single port's tree and stability info."""
+        port_info = next((p for p in ports_data if p.get('id') == idx + 1), None)
+        label = port_info['label'] if port_info else child.get('model', 'Port')
+        dc = len(port_info['devices']) if port_info else 0
+        ph = port_info['max_hops'] if port_info else 0
+        pt = port_info['max_tiers'] if port_info else 0
+        p_hub = port_info.get('external_hubs', 0) if port_info else 0
+        is_int = child.get('is_internal', False)
+        int_pre = "[INTERNAL] " if is_int else ""
+        ep_label = "endpoint" if dc == 1 else "endpoints"
+        self.tree_text.insert(tk.END, f"  {int_pre}{label} ({dc} {ep_label}, hops={ph}, tiers={pt}, hubs={p_hub})")
+        self._print_port_tree(child)
+        if is_int:
+            self.tree_text.insert(tk.END, "    (internal)\n")
+        elif port_info:
+            self._print_stability_port(port_info, port_info['verdicts'])
+
+    def _print_port_tree(self, port_node):
+        """Print tree for a single port (children of the port node)."""
+        children = port_node.get('children', [])
+        if children:
+            self._print_tree(children, "    ")
+
+    def _print_stability_port(self, port_info, stability_data):
+        """Print stability verdicts for a single port."""
+        for v in stability_data:
+            status_char = '+' if v['color'] == 'green' else ('~' if v['color'] == 'orange' else '!')
+            hubs_str = f"hubs {v['current_hubs']}/{v['max_hubs']}  " if 'current_hubs' in v else ""
+            desc = v.get('description', v.get('name', ''))
+            self.tree_text.insert(tk.END, f"    {status_char} {desc:<22s} ")
+            self.tree_text.insert(tk.END, f"{v['status']:<9s} ")
+            self.tree_text.insert(tk.END, f"hops {v['current_hops']}/{v['max_hops']}  ")
+            self.tree_text.insert(tk.END, f"tiers {v['current_tiers']}/{v['max_tiers']}  ")
+            self.tree_text.insert(tk.END, f"{hubs_str}\n")
 
     @staticmethod
     def _node_label(node):
@@ -514,33 +630,19 @@ class ProAVShokoGUI:
         if node.get('is_composite_interface'):
             mi = f"MI_{iface_num:02d}" if iface_num is not None else ""
             suffix = f" ({device_info})" if device_info else ""
+            # Use model (ID_MODEL_FROM_DATABASE) when it's a specific name, not generic
             if model and 'USB-enhet' not in model and 'sammansatt' not in model and 'Composite' not in model:
                 label = model
                 if mi:
                     label += f" {mi}"
                 return f"{label}{suffix}"
+            # Fall back to interface type description
             if iface_desc:
                 iface_tag = f"HID Keyboard" if "Keyboard" in iface_desc else \
                             f"HID Mouse" if "Mouse" in iface_desc else \
                             iface_desc
                 return f"{iface_tag} {mi}{suffix}".strip()
         return f"{model} ({device_info})" if device_info else model
-
-    def _render_tree_to_text(self, tree, level):
-        """Recursively render the USB tree into the text widget."""
-        indent = "  " * level
-        for node in tree:
-            is_hub = node.get('is_hub', False)
-            hub_tag = " [HUB]" if is_hub else ""
-            hops = node.get('hops', 0)
-            is_int = " [INTERNAL]" if node.get('is_internal') else ""
-
-            label = self._node_label(node)
-            line = f"{indent}{label}{hub_tag}{is_int}  hops={hops}\n"
-            self.tree_text.insert(tk.END, line, ('info',))
-
-            if node.get('children'):
-                self._render_tree_to_text(node['children'], level + 1)
 
     def _update_log(self):
         """Update the log widget from the queue (stdout redirection)."""
@@ -553,6 +655,26 @@ class ProAVShokoGUI:
             pass
         finally:
             self.root.after(100, self._update_log)
+
+    def _refresh_tree_and_stability(self):
+        """Re-scan the USB tree, recompute hops/tiers/stability and update the GUI.
+        Called on startup and again after every connect/disconnect event."""
+        usb_tree = self.usb_analyzer.build_tree()
+        hops_data = self.usb_analyzer.calculate_hops_and_tiers(usb_tree)
+        stability = self.usb_analyzer.assess_stability(hops_data)
+
+        displays = self.display_analyzer.get_display_info() if self.display_analyzer else []
+
+        self.current_data = {
+            'usb_tree': usb_tree,
+            'hops_data': hops_data,
+            'stability': stability,
+            'displays': displays,
+            'platform_info': self.platform_info
+        }
+
+        self.root.after(0, self._update_tree_display, usb_tree, hops_data, stability, displays)
+        print(self.usb_analyzer.get_stability_summary(stability))
 
     def _stop_monitoring(self):
         """Stop live USB monitoring if it's running."""

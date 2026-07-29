@@ -90,7 +90,7 @@ In modern meeting rooms we often see:
 - **usbmonitor** - USB device monitoring
 - **screeninfo** - Display information
 - **weasyprint** - PDF generation
-- **tkinter** - GUI (built-in)
+- **customtkinter** - Modern GUI theme (includes tkinter)
 - **PyInstaller** - Cross-platform builds
 - **Mermaid.js** - Diagrams in HTML reports
 - **PowerShell** - Windows launcher

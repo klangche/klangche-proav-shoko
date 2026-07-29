@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ProAV Shoko - entry point for running from source and for packaged
+ProAV Shoko - Entry point for running from source and for packaged
 (PyInstaller) builds.
 
 Run this from the repository root:
