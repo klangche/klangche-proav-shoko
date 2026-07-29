@@ -11,6 +11,7 @@ from tkinter import filedialog, messagebox
 import threading
 import queue
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -31,11 +32,13 @@ class LogRedirector:
         self.original_stdout = sys.stdout
 
     def write(self, text):
-        self.original_stdout.write(text)
+        if self.original_stdout is not None:
+            self.original_stdout.write(text)
         self.queue.put(text)
 
     def flush(self):
-        self.original_stdout.flush()
+        if self.original_stdout is not None:
+            self.original_stdout.flush()
 
 
 class ProAVShokoGUI:
@@ -64,6 +67,9 @@ class ProAVShokoGUI:
         self.platform_info = None
         self.log_panel_visible = True
         self.csv_path = csv_path
+        self.recent_disconnects = {}
+        self.event_log = []
+        self.jitter_warned_models = set()
 
         self._build_gui()
         self.root.bind('<Configure>', self._on_window_resize)
@@ -213,15 +219,20 @@ class ProAVShokoGUI:
     def _run_analysis(self):
         try:
             self.platform_info = PlatformUtils.get_platform_info()
-
+            print(f"[+]System OS: {self.platform_info['os']}")
+            print(f"[+]OS version: {self.platform_info['version']}")
             self.root.after(0, self._update_platform_label)
 
             self.usb_analyzer = USBAnalyzer(self.csv_path) if self.csv_path else USBAnalyzer()
+            print("[+]Loading Connected USB Devices...")
+
+            self.display_analyzer = DisplayAnalyzer()
+            print("[+]Loading Connected displays...")
+            print()
 
             self._refresh_tree_and_stability()
 
-            self.display_analyzer = DisplayAnalyzer()
-
+            print("[+]Live Logging")
             self.root.after(0, lambda: self.status_label.configure(
                 text="Monitoring (live)", text_color="#10b981"
             ))
@@ -281,7 +292,7 @@ class ProAVShokoGUI:
         if not warned_ports:
             return
 
-        print("\n[+]Warnings")
+        print("[+]Warnings")
 
         for idx, child, port_info, port_warnings in warned_ports:
             port_tag = f"external.port{idx + 1}"
@@ -292,9 +303,7 @@ class ProAVShokoGUI:
             p_hub = port_info.get('external_hubs', 0)
             ep_label = "endpoint" if dc == 1 else "endpoints"
 
-            print()
-            print(f"    {port_tag}.tree")
-            print()
+            print(f"{port_tag}.tree")
             print(f"  {label} ({dc} {ep_label}, hops={ph}, tiers={pt}, hubs={p_hub})")
 
             children = child.get('children', [])
@@ -302,9 +311,10 @@ class ProAVShokoGUI:
                 self._print_tree_stdout(children, "    ")
 
             print()
-            print(f"    {port_tag}.warnings")
+            print(f"{port_tag}.warnings")
             for w in port_warnings:
                 print(f"    ! {w['name']}: {w['warning']}")
+            print()
 
     def _print_tree_stdout(self, nodes, prefix="", _show_internal=False, _parent_is_internal=False):
         for i, node in enumerate(nodes):
@@ -336,20 +346,54 @@ class ProAVShokoGUI:
                 self._print_tree_stdout(node['children'], child_prefix, _show_internal, new_parent_int)
 
     def _on_device_connect(self, device_id, device_info):
+        now = time.time()
         model = device_info.get('ID_MODEL', device_id)
-        self.root.after(0, self._log_event, f"CONNECTED: {model}", 'event_connect')
-        self._refresh_tree_and_stability()
+        self.event_log.append((model, 'connect', now))
+        cutoff = now - 30.0
+        self.event_log = [e for e in self.event_log if e[2] >= cutoff]
+
+        last_disc = self.recent_disconnects.pop(model, 0.0)
+        if last_disc and (now - last_disc) <= 5.0:
+            msg = f"RE-CONNECTED: {model}"
+        else:
+            msg = f"CONNECTED: {model}"
+        self.root.after(0, self._log_event, msg, 'event_connect')
+
+        if not self._jitter_warned(model, now):
+            self._check_jitter(model, now)
 
     def _on_device_disconnect(self, device_id, device_info):
+        now = time.time()
         model = device_info.get('ID_MODEL', device_id)
+        self.recent_disconnects[model] = now
+        self.event_log.append((model, 'disconnect', now))
+        cutoff = now - 30.0
+        self.event_log = [e for e in self.event_log if e[2] >= cutoff]
+
         self.root.after(0, self._log_event, f"DISCONNECTED: {model}", 'event_disconnect')
-        self._refresh_tree_and_stability()
+
+        if not self._jitter_warned(model, now):
+            self._check_jitter(model, now)
+
+    def _jitter_warned(self, model, now):
+        return model in self.jitter_warned_models
+
+    def _check_jitter(self, model, now):
+        cutoff = now - 30.0
+        recent = [e for e in self.event_log if e[2] >= cutoff and e[0] == model]
+        connects = sum(1 for _, t, _ in recent if t == 'connect')
+        disconnects = sum(1 for _, t, _ in recent if t == 'disconnect')
+        if connects >= 2 and disconnects >= 2:
+            self.jitter_warned_models.add(model)
+            self.root.after(0, self._log_event,
+                f"JITTER: {model} — rapid connect/disconnect", 'event_disconnect')
 
     def _log_event(self, message, tag):
         timestamp = datetime.now().strftime("%H:%M:%S")
         self.log_text.configure(state='normal')
         self.log_text.insert("end", f"[{timestamp}] ", ("timestamp",))
-        self.log_text.insert("end", f"{message}\n", (tag,))
+        tags = (tag,) if tag else ()
+        self.log_text.insert("end", f"{message}\n", tags)
         self.log_text.configure(state='disabled')
         self.log_text.see("end")
 

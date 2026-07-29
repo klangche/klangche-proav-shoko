@@ -42,6 +42,10 @@ def main():
             ctk.set_default_color_theme("blue")
             from src.gui import ProAVShokoGUI
             root = ctk.CTk()
+            from pathlib import Path
+            ico = Path(__file__).parent / "resources" / "shoko-icon.ico"
+            if ico.exists():
+                root.iconbitmap(str(ico))
             app = ProAVShokoGUI(root, args.csv_path)
             root.mainloop()
         except ImportError as e:

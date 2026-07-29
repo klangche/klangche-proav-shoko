@@ -6,18 +6,21 @@ import os
 # SPEC is provided by PyInstaller and contains the spec file path
 BASE_DIR = os.path.dirname(os.path.abspath(SPEC))
 
-# Add src to path
+# Add src to path and load version
 sys.path.insert(0, os.path.join(BASE_DIR, "src"))
+from version import get_exe_name, get_version
+EXE_NAME = get_exe_name()
+APP_VERSION = get_version()
 
 # --- Configuration ---
 APP_NAME = "ProAV Shoko"
-APP_VERSION = "1.0.0"
 MAIN_SCRIPT = "src/main.py"
 
 # Data files to include (baked into the exe)
 DATAS = [
-    ("src/assets/report.css", "assets"),
-    ("src/assets/usb_data.csv", "assets"),
+    ("src/assets/report.css", "src/assets"),
+    ("src/assets/usb_data.csv", "src/assets"),
+    ("src/resources/shoko-icon.ico", "src/resources"),
 ]
 
 # Hidden imports
@@ -83,7 +86,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name=f"ProAV Shoko {APP_VERSION}",
+    name=EXE_NAME,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
