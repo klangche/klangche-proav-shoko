@@ -1,18 +1,15 @@
 {
-  "version": "0.4.0-beta.4",
-  "lastUpdated": "2026-02-26",
-  
+  "version": "0.4.0-beta.6",
+  "lastUpdated": "2026-07-29",
   "metadata": {
     "toolName": "Shōko - USB + Display Diagnostic Tool",
     "author": "klangche",
     "repository": "https://github.com/klangche/klangche-proav-shoko"
   },
-
   "scoring": {
     "baseFormula": "10.0 - maxHops",
     "minScore": 0.0,
     "maxScore": 10.0,
-    
     "penalties": {
       "rehandshake": 0.5,
       "jitter": 1.5,
@@ -24,18 +21,15 @@
       "linkFailure": 1.0,
       "otherError": 0.25
     },
-    
     "thresholds": {
       "stable": 8.0,
       "potentiallyUnstable": 5.0,
       "notStable": 0.0
     }
   },
-
   "messages": {
     "noDevices": "└── Nothing detected"
   },
-
   "referenceModels": [
     {
       "id": "windows",
@@ -74,7 +68,6 @@
       "max": 5
     }
   ],
-
   "additionalModels": [
     {
       "id": "ipad",
@@ -101,7 +94,6 @@
       "max": 4
     }
   ],
-
   "colors": {
     "cyan": "Cyan",
     "magenta": "Magenta",
@@ -114,7 +106,6 @@
     "potentiallyUnstable": "Yellow",
     "notStable": "Red"
   },
-
   "analytics": {
     "updateInterval": 2,
     "jitterThreshold": 2,
