@@ -80,11 +80,18 @@ jobs:
           BIN=$(ls dist/ProAV\ Shoko\ Windows* | head -1)
           chmod +x "$BIN"
           "$BIN" --cli || echo "Smoke test exited non-zero (expected on a runner with no USB/display hardware), continuing."
+      - name: Zip binary
+        shell: bash
+        run: |
+          cd dist
+          EXE="ProAV Shoko Windows ${{ needs.bump-version.outputs.version }}.exe"
+          zip "$(basename "$EXE" .exe).zip" "$EXE"
+          rm -f "$EXE"
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
           name: ProAV Shoko Windows ${{ needs.bump-version.outputs.version }}
-          path: dist/ProAV Shoko Windows*
+          path: dist/ProAV Shoko Windows*.zip
           if-no-files-found: error
 
   build-linux:
@@ -120,99 +127,21 @@ jobs:
           BIN=$(ls dist/ProAV\ Shoko\ Linux* | head -1)
           chmod +x "$BIN"
           "$BIN" --cli || echo "Smoke test exited non-zero (expected on a runner with no USB/display hardware), continuing."
+      - name: Zip binary
+        shell: bash
+        run: |
+          cd dist
+          BIN="ProAV Shoko Linux ${{ needs.bump-version.outputs.version }}"
+          zip "$BIN.zip" "$BIN"
+          rm -f "$BIN"
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
           name: ProAV Shoko Linux ${{ needs.bump-version.outputs.version }}
-          path: dist/ProAV Shoko Linux*
+          path: dist/ProAV Shoko Linux*.zip
           if-no-files-found: error
 
-  build-macos-intel:
-    needs: bump-version
-    runs-on: macos-14
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Install Rosetta
-        run: softwareupdate --install-rosetta --agree-to-license
-
-      - name: Install x86_64 Homebrew
-        run: |
-          NONINTERACTIVE=1 arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-      - name: Install system deps (x86_64)
-        run: arch -x86_64 /usr/local/bin/brew install pango
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          architecture: x64
-
-      - name: Generate .ico
-        run: python scripts/generate_icon.py
-
-      - name: Install Python deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e .
-          pip install pyinstaller
-
-      - name: Verify architecture
-        run: file $(python -c "import sys; print(sys.executable)")
-
-      - name: Build binary
-        run: >
-          pyinstaller --onefile
-          --target-arch x86_64
-          --name "ProAV Shoko"
-          --paths .
-          --add-data "src/assets/report.css:src/assets"
-          --add-data "src/assets/usb_data.csv:src/assets"
-          run.py
-      - name: Bundle as .app
-        shell: bash
-        run: |
-          VER="${{ needs.bump-version.outputs.version }}"
-          BUNDLE_NAME="ProAV Shoko MacOS Intel ${VER}.app"
-          mkdir -p "dist/${BUNDLE_NAME}/Contents/MacOS"
-          cp "dist/ProAV Shoko" "dist/${BUNDLE_NAME}/Contents/MacOS/ProAV Shoko"
-          {
-            echo '<?xml version="1.0" encoding="UTF-8"?>'
-            echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
-            echo '<plist version="1.0">'
-            echo '<dict>'
-            echo '  <key>CFBundleExecutable</key>'
-            echo '  <string>ProAV Shoko</string>'
-            echo '  <key>CFBundleIdentifier</key>'
-            echo '  <string>com.klangche.proav-shoko</string>'
-            echo '  <key>CFBundleName</key>'
-            echo '  <string>ProAV Shoko</string>'
-            echo '  <key>CFBundlePackageType</key>'
-            echo '  <string>APPL</string>'
-            echo '  <key>CFBundleShortVersionString</key>'
-            echo "  <string>${VER}</string>"
-            echo '  <key>CFBundleVersion</key>'
-            echo "  <string>${VER}</string>"
-            echo '  <key>LSMinimumSystemVersion</key>'
-            echo '  <string>10.13</string>'
-            echo '</dict>'
-            echo '</plist>'
-          } > "dist/${BUNDLE_NAME}/Contents/Info.plist"
-          rm "dist/ProAV Shoko"
-          echo "Created ${BUNDLE_NAME}"
-      - name: Smoke test
-        shell: bash
-        run: |
-          APP=$(ls -d dist/ProAV\ Shoko\ MacOS\ Intel*.app | head -1)
-          "$APP/Contents/MacOS/ProAV Shoko" --cli || echo "Smoke test exited non-zero (expected on a runner with no USB/display hardware), continuing."
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: ProAV Shoko MacOS Intel ${{ needs.bump-version.outputs.version }}
-          path: dist/ProAV Shoko MacOS Intel*.app
-          if-no-files-found: error
-
-  build-macos-arm64:
+  build-macos:
     needs: bump-version
     runs-on: macos-14
     steps:
@@ -229,10 +158,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           pip install pyinstaller
-      - name: Build binary
+      - name: Build universal2 binary
         run: >
           pyinstaller --onefile
-          --target-arch arm64
+          --target-arch universal2
           --name "ProAV Shoko"
           --paths .
           --add-data "src/assets/report.css:src/assets"
@@ -242,9 +171,11 @@ jobs:
         shell: bash
         run: |
           VER="${{ needs.bump-version.outputs.version }}"
-          BUNDLE_NAME="ProAV Shoko MacOS ARM64 ${VER}.app"
+          BUNDLE_NAME="ProAV Shoko MacOS ${VER}.app"
           mkdir -p "dist/${BUNDLE_NAME}/Contents/MacOS"
           cp "dist/ProAV Shoko" "dist/${BUNDLE_NAME}/Contents/MacOS/ProAV Shoko"
+          mkdir -p "dist/${BUNDLE_NAME}/Contents/Resources"
+          cp "src/resources/shoko-icon.ico" "dist/${BUNDLE_NAME}/Contents/Resources/" 2>/dev/null || true
           {
             echo '<?xml version="1.0" encoding="UTF-8"?>'
             echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
@@ -263,7 +194,7 @@ jobs:
             echo '  <key>CFBundleVersion</key>'
             echo "  <string>${VER}</string>"
             echo '  <key>LSMinimumSystemVersion</key>'
-            echo '  <string>10.13</string>'
+            echo '  <string>10.15</string>'
             echo '</dict>'
             echo '</plist>'
           } > "dist/${BUNDLE_NAME}/Contents/Info.plist"
@@ -272,29 +203,47 @@ jobs:
       - name: Smoke test
         shell: bash
         run: |
-          APP=$(ls -d dist/ProAV\ Shoko\ MacOS\ ARM64*.app | head -1)
+          APP=$(ls -d dist/ProAV\ Shoko\ MacOS*.app | head -1)
           "$APP/Contents/MacOS/ProAV Shoko" --cli || echo "Smoke test exited non-zero (expected on a runner with no USB/display hardware), continuing."
+      - name: Create .dmg
+        shell: bash
+        run: |
+          VER="${{ needs.bump-version.outputs.version }}"
+          APP_NAME="ProAV Shoko MacOS ${VER}.app"
+          DMG_NAME="ProAV Shoko MacOS ${VER}.dmg"
+          cd dist
+          hdiutil create -volname "ProAV Shoko" -srcfolder "$APP_NAME" -ov -format UDZO "$DMG_NAME"
+          rm -rf "$APP_NAME"
+      - name: Zip .dmg
+        shell: bash
+        run: |
+          cd dist
+          DMG="ProAV Shoko MacOS ${{ needs.bump-version.outputs.version }}.dmg"
+          ZIP_NAME="ProAV Shoko MacOS ${{ needs.bump-version.outputs.version }}.zip"
+          zip "$ZIP_NAME" "$DMG"
+          rm -f "$DMG"
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
-          name: ProAV Shoko MacOS ARM64 ${{ needs.bump-version.outputs.version }}
-          path: dist/ProAV Shoko MacOS ARM64*.app
+          name: ProAV Shoko MacOS ${{ needs.bump-version.outputs.version }}
+          path: dist/ProAV Shoko MacOS*.zip
           if-no-files-found: error
 
   release:
     name: Publish release
-    needs: [bump-version, build-windows, build-linux, build-macos-intel, build-macos-arm64]
+    needs: [bump-version, build-windows, build-linux, build-macos]
     runs-on: ubuntu-latest
     steps:
       - name: Download all build artifacts
         uses: actions/download-artifact@v6
         with:
           path: dist
-      - name: Flatten artifacts into one folder
+          merge-multiple: true
+      - name: Collect release zips
         run: |
           mkdir -p release
-          find dist -type f -exec cp {} release/ \;
-          ls -la release
+          cp dist/*.zip release/ 2>/dev/null || true
+          ls -la release/
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
