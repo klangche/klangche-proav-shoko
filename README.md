@@ -18,11 +18,10 @@ Download the latest release for your platform:
 |----------|----------|
 | **Windows, MacOS, Linux** | [`ProAV Shoko`](https://github.com/klangche/klangche-proav-shoko/releases) — Download and run!
 
-**Python (any platform)**
+**Python (any platform) — temp install, no permanent setup**
 ```bash
-pip install git+https://github.com/klangche/klangche-proav-shoko.git; proav-shoko --cli
+python3 -c "import subprocess,sys,tempfile; d=tempfile.mkdtemp(); subprocess.check_call([sys.executable,'-m','pip','install','--quiet','--target',d,'git+https://github.com/klangche/klangche-proav-shoko.git']); sys.path.insert(0,d); from src.main import main; main()"
 ```
-> PowerShell users: use `;` instead of `&&` between commands.
 
 **PowerShell (Windows)**
 ```powershell
