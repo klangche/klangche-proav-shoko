@@ -19,13 +19,16 @@ Download the latest release for your platform:
 | **Windows, MacOS, Linux** | [`ProAV Shoko`](https://github.com/klangche/klangche-proav-shoko/releases) — Download and run!
 
 **Python (any platform) — temp install, no permanent setup**
+
+*Unix/macOS (and WSL):*
 ```bash
 pip install --quiet --target /tmp/proav-shoko "git+https://github.com/klangche/klangche-proav-shoko.git"; PYTHONPATH=/tmp/proav-shoko python3 -m src
 ```
-> Windows PowerShell:
-> ```powershell
-> pip install --quiet --target "$env:TEMP\proav-shoko" git+https://github.com/klangche/klangche-proav-shoko.git; $env:PYTHONPATH="$env:TEMP\proav-shoko"; python -m src
-> ```
+
+*Windows PowerShell:*
+```powershell
+pip install --quiet --target "$env:TEMP\\proav-shoko" git+https://github.com/klangche/klangche-proav-shoko.git; $env:PYTHONPATH="$env:TEMP\\proav-shoko"; python -m src
+```
 
 **PowerShell (Windows)**
 ```powershell
