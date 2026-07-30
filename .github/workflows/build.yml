@@ -138,7 +138,7 @@ jobs:
 
       - name: Install x86_64 Homebrew
         run: |
-          arch -x86_64 NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          NONINTERACTIVE=1 arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
       - name: Install system deps (x86_64)
         run: arch -x86_64 /usr/local/bin/brew install pango
