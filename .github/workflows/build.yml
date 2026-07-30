@@ -80,18 +80,11 @@ jobs:
           BIN=$(ls dist/ProAV\ Shoko\ Windows* | head -1)
           chmod +x "$BIN"
           "$BIN" --cli || echo "Smoke test exited non-zero (expected on a runner with no USB/display hardware), continuing."
-      - name: Zip binary
-        shell: bash
-        run: |
-          cd dist
-          EXE="ProAV Shoko Windows ${{ needs.bump-version.outputs.version }}.exe"
-          zip "$(basename "$EXE" .exe).zip" "$EXE"
-          rm -f "$EXE"
-      - name: Upload build artifact
+      - name: Upload exe
         uses: actions/upload-artifact@v6
         with:
           name: ProAV Shoko Windows ${{ needs.bump-version.outputs.version }}
-          path: dist/ProAV Shoko Windows*.zip
+          path: dist/ProAV Shoko Windows*.exe
           if-no-files-found: error
 
   build-linux:
@@ -127,18 +120,11 @@ jobs:
           BIN=$(ls dist/ProAV\ Shoko\ Linux* | head -1)
           chmod +x "$BIN"
           "$BIN" --cli || echo "Smoke test exited non-zero (expected on a runner with no USB/display hardware), continuing."
-      - name: Zip binary
-        shell: bash
-        run: |
-          cd dist
-          BIN="ProAV Shoko Linux ${{ needs.bump-version.outputs.version }}"
-          zip "$BIN.zip" "$BIN"
-          rm -f "$BIN"
-      - name: Upload build artifact
+      - name: Upload binary
         uses: actions/upload-artifact@v6
         with:
           name: ProAV Shoko Linux ${{ needs.bump-version.outputs.version }}
-          path: dist/ProAV Shoko Linux*.zip
+          path: dist/ProAV Shoko Linux*
           if-no-files-found: error
 
   build-macos:
@@ -214,19 +200,11 @@ jobs:
           cd dist
           hdiutil create -volname "ProAV Shoko" -srcfolder "$APP_NAME" -ov -format UDZO "$DMG_NAME"
           rm -rf "$APP_NAME"
-      - name: Zip .dmg
-        shell: bash
-        run: |
-          cd dist
-          DMG="ProAV Shoko MacOS ${{ needs.bump-version.outputs.version }}.dmg"
-          ZIP_NAME="ProAV Shoko MacOS ${{ needs.bump-version.outputs.version }}.zip"
-          zip "$ZIP_NAME" "$DMG"
-          rm -f "$DMG"
-      - name: Upload build artifact
+      - name: Upload .dmg
         uses: actions/upload-artifact@v6
         with:
           name: ProAV Shoko MacOS ${{ needs.bump-version.outputs.version }}
-          path: dist/ProAV Shoko MacOS*.zip
+          path: dist/ProAV Shoko MacOS*.dmg
           if-no-files-found: error
 
   release:
@@ -239,10 +217,14 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Collect release zips
+      - name: Package release zips
         run: |
           mkdir -p release
-          cp dist/*.zip release/ 2>/dev/null || true
+          for f in dist/*.exe dist/*.dmg dist/ProAV\ Shoko\ Linux*; do
+            [ -f "$f" ] || continue
+            base=$(basename "$f" | sed 's/\.exe$//; s/\.dmg$//')
+            zip -j "release/${base}.zip" "$f"
+          done
           ls -la release/
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
