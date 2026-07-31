@@ -80,21 +80,6 @@ In modern meeting rooms we often see:
 
 ---
 
-## Features
-
-| Feature | Description | Status |
-|---------|-------------|--------|
-| USB Tree | Hierarchical view of all connected devices | ✅ |
-| Hops & Tiers | Calculates the number of levels and maximum depth | ✅ |
-| Stability Assessment | Color-coded based on chain length | ✅ |
-| Apple Silicon Warning | Special warning at 5+ hops | ✅ |
-| Display Information | Shows connected displays with resolution | ✅ |
-| HTML Report | Dark background, identical to the terminal | ✅ |
-| PDF Report | Bundled weasyprint, no extra install | ✅ |
-| GUI | Live overview with tree and log | ✅ |
-| Cross-platform | Windows exe, macOS Universal, Linux, Python, PowerShell | ✅ |
-
----
 
 ## Tech Stack
 
