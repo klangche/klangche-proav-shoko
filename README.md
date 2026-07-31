@@ -30,10 +30,6 @@ pip install --quiet --target /tmp/proav-shoko "git+https://github.com/klangche/k
 pip install --quiet --target "$env:TEMP\\proav-shoko" git+https://github.com/klangche/klangche-proav-shoko.git; $env:PYTHONPATH="$env:TEMP\\proav-shoko"; python -m src
 ```
 
-**PowerShell (Windows)**
-```powershell
-iex (irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1)
-```
 Copy and paste into PowerShell.
 
 ---
