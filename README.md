@@ -20,7 +20,7 @@ Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD envir
 
 **Or run through Shell:**
 
-### GUI version — Click Copy, then paste to Terminal (no sudo required)
+### GUI version — Click Copy, then paste to Shell (no admin required)
 
 *Terminal (Mac / Linux):*
 ```bash
@@ -31,9 +31,9 @@ curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uvx --python 3.1
 ```powershell
 irm https://astral.sh/uv/install.ps1 | iex; & "$env:USERPROFILE\.local\bin\uvx.exe" --python 3.12 --from "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" proav-shoko --gui
 ```
-*Click Copy, then paste to PowerShell (no admin required)*
 
-### CLI version — Click Copy, then paste to Terminal (no sudo required)
+
+### CLI version — Click Copy, then paste to Shell (no admin required)
 
 *Terminal (Mac / Linux):*
 ```bash
@@ -44,7 +44,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uvx --python 3.1
 ```powershell
 irm https://astral.sh/uv/install.ps1 | iex; & "$env:USERPROFILE\.local\bin\uvx.exe" --python 3.12 --from "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" proav-shoko
 ```
-*Click Copy, then paste to PowerShell (no admin required)*
+
 
 
 
