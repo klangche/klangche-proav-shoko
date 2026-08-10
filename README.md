@@ -18,11 +18,13 @@ Download the latest release for your platform:
 |----------|----------|
 | **Windows, MacOS, Linux** | [`ProAV Shoko`](https://github.com/klangche/klangche-proav-shoko/releases) — Download and run!
 
-**Python (any platform) — temp install, no permanent setup**
+**Run from source — no Python, no git, no admin required.**
 
-Paste one line into Terminal or PowerShell. Uses [`uv`](https://docs.astral.sh/uv/), which downloads its own Python — **no existing Python installation is required**, and it works even if your system Python is 3.9 (macOS default). The CLI opens automatically.
+Paste one line into Terminal or PowerShell. [`uv`](https://docs.astral.sh/uv/) downloads its own Python and installs to a temporary user cache.
 
-*Unix/macOS (and WSL):*
+### CLI version — Terminal / PowerShell
+
+*Mac / Linux:*
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uvx --python 3.12 --from "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" proav-shoko
 ```
@@ -32,10 +34,20 @@ curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uvx --python 3.1
 irm https://astral.sh/uv/install.ps1 | iex; & "$env:USERPROFILE\.local\bin\uvx.exe" --python 3.12 --from "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" proav-shoko
 ```
 
-> Add `--gui` for the GUI version. (pip alternative — requires Python ≥ 3.10: `python3 -m pip install --target /tmp/proav-shoko "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" && PYTHONPATH=/tmp/proav-shoko python3 -m src`.)
+### GUI version — beautiful GUI
 
-> **Note (pip alternative):** The package requires **Python ≥ 3.10**. If you have a suitable
-> Python, `python3 -m pip install --target /tmp/proav-shoko "git+https://github.com/klangche/klangche-proav-shoko.git"` and `PYTHONPATH=/tmp/proav-shoko python3 -m src` also work.
+*Mac / Linux:*
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uvx --python 3.12 --from "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" proav-shoko --gui
+```
+
+*Windows PowerShell:*
+```powershell
+irm https://astral.sh/uv/install.ps1 | iex; & "$env:USERPROFILE\.local\bin\uvx.exe" --python 3.12 --from "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" proav-shoko --gui
+```
+
+> **pip alternative** — requires Python ≥ 3.10, no git needed:
+> `python3 -m pip install --target /tmp/proav-shoko "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" && PYTHONPATH=/tmp/proav-shoko python3 -m src`
 
 
 
