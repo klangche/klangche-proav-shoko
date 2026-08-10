@@ -55,7 +55,6 @@ Copy and paste into PowerShell.
 >>>>>>> dev
 
 
-
 ## Table of Contents
 
 - [Overview](#overview)
