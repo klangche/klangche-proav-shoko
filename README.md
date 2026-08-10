@@ -12,31 +12,47 @@ Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD envir
 
 ## Quick Start
 
-Download the latest release for your platform:
+**Download the app for your platform:**
 
 | Platform | Download |
 |----------|----------|
-| **Windows, MacOS, Linux** | [`ProAV Shoko`](https://github.com/klangche/klangche-proav-shoko/releases) — Download and run!
+| **Windows, macOS, Linux** | [`ProAV Shoko`](https://github.com/klangche/klangche-proav-shoko/releases) — Download and run! |
 
-**Python (any platform) — temp install, no permanent setup**
+**Or run through Shell:**
 
-Paste one line into Terminal or PowerShell. Uses [`uv`](https://docs.astral.sh/uv/), which downloads its own Python — **no existing Python installation is required**, and it works even if your system Python is 3.9 (macOS default). The CLI opens automatically.
+### GUI version — Click Copy, then paste to Shell (no admin required)
 
-*Unix/macOS (and WSL):*
+*Terminal (Mac / Linux):*
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uvx --python 3.12 --from "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" proav-shoko --gui
+```
+
+*PowerShell (Windows):*
+```powershell
+irm https://astral.sh/uv/install.ps1 | iex; & "$env:USERPROFILE\.local\bin\uvx.exe" --python 3.12 --from "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" proav-shoko --gui
+```
+
+
+### CLI version — Click Copy, then paste to Shell (no admin required)
+
+*Terminal (Mac / Linux):*
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uvx --python 3.12 --from "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" proav-shoko
 ```
 
-*Windows PowerShell:*
+*PowerShell (Windows):*
 ```powershell
 pip install --quiet --target "$env:TEMP\\proav-shoko" git+https://github.com/klangche/klangche-proav-shoko.git; $env:PYTHONPATH="$env:TEMP\\proav-shoko"; python -m src
 ```
 
+<<<<<<< HEAD
 **PowerShell (Windows)**
 ```powershell
 iex (irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1)
 ```
 Copy and paste into PowerShell.
+=======
+>>>>>>> dev
 
 
 
@@ -45,6 +61,7 @@ Copy and paste into PowerShell.
 - [Overview](#overview)
 - [Why ProAV Shoko?](#why-proav-shoko)
 - [Features](#features)
+- [How to Run](#how-to-run)
 - [Tech Stack](#tech-stack)
 - [Versioning](VERSIONING.md)
 - [License](#license)
@@ -95,6 +112,27 @@ In modern meeting rooms we often see:
 | PDF Report | Bundled weasyprint, no extra install | ✅ |
 | GUI | Live overview with tree and log | ✅ |
 | Cross-platform | Windows exe, macOS Universal, Linux, Python, PowerShell | ✅ |
+
+---
+
+## How to Run
+
+**Requirements:** none. No Python, no git, no admin/sudo. [`uv`](https://docs.astral.sh/uv/) downloads everything it needs into a user cache.
+
+**What the one-liner does:** installs `uv` (a single user-local binary), downloads Python 3.12 + dependencies, then runs ProAV Shoko — GUI with `--gui`, otherwise CLI.
+
+### pip alternative (requires Python ≥ 3.10)
+
+```bash
+python3 -m pip install --target /tmp/proav-shoko "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" && PYTHONPATH=/tmp/proav-shoko python3 -m src
+```
+
+### Tips
+
+- First run downloads Python + dependencies (takes a minute); later runs start instantly.
+- Get the latest version: `uvx --refresh --from "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" proav-shoko`
+- CLI mode is interactive: press Enter to stop live monitoring, then choose an HTML or PDF report.
+- Running from a clone: `uv run python run.py --gui` (or `--cli`).
 
 ---
 
