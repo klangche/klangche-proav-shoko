@@ -47,7 +47,6 @@ irm https://astral.sh/uv/install.ps1 | iex; & "$env:USERPROFILE\.local\bin\uvx.e
 
 
 
-
 ## Table of Contents
 
 - [Overview](#overview)
