@@ -417,5 +417,7 @@ FodyWeavers.xsd
 *.msm
 *.msp
 
-# Auto-generated icon (from shoko-icon.png)
+# Auto-generated icons (from shoko-icon.png)
 src/resources/shoko-icon.ico
+src/resources/shoko-icon.icns
+src/resources/shoko-icon.iconset

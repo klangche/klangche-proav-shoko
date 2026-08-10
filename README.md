@@ -145,7 +145,10 @@ klangche-proav-shoko/
 │       ├── report.css            # Report styling
 │       └── usb_data.csv          # Platform stability limits
 ├── scripts/
-│   └── generate_icon.py          # Auto-generates .ico from .png
+│   ├── generate_icon.py          # Auto-generates .ico from .png
+│   ├── generate_icns.py          # Auto-generates .icns from .png (macOS)
+│   └── dmg/
+│       └── README-macOS.txt      # How-to-run instructions bundled in the DMG
 ├── proav-shoko.ps1               # PowerShell launcher
 ├── proav-shoko_powershell.ps1    # Full PS implementation
 ├── run.py                        # Python entry point

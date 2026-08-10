@@ -60,6 +60,7 @@ class ProAVShokoGUI:
         self.is_running = False
         self.is_monitoring = False
         self.log_queue = queue.Queue()
+        self.ui_queue = queue.Queue()
         self.usb_analyzer = None
         self.display_analyzer = None
         self.report_generator = None
@@ -75,6 +76,7 @@ class ProAVShokoGUI:
         self.root.bind('<Configure>', self._on_window_resize)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._update_log()
+        self._process_ui_queue()
 
     def _build_gui(self):
         main_frame = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -236,7 +238,7 @@ class ProAVShokoGUI:
             self.platform_info = PlatformUtils.get_platform_info()
             print(f"[+]System OS: {self.platform_info['os']}")
             print(f"[+]OS version: {self.platform_info['version']}")
-            self.root.after(0, self._update_platform_label)
+            self.ui_queue.put(self._update_platform_label)
 
             self.usb_analyzer = USBAnalyzer(self.csv_path) if self.csv_path else USBAnalyzer()
             print("[+]Loading Connected USB Devices...")
@@ -248,7 +250,7 @@ class ProAVShokoGUI:
             self._refresh_tree_and_stability()
 
             print("[+]Live Logging")
-            self.root.after(0, lambda: self.status_label.configure(
+            self.ui_queue.put(lambda: self.status_label.configure(
                 text="Monitoring (live)", text_color="#10b981"
             ))
 
@@ -261,8 +263,8 @@ class ProAVShokoGUI:
 
         except Exception as e:
             err_msg = str(e)
-            self._log_event(f"Error: {err_msg}", None)
-            self.root.after(0, lambda m=err_msg: self.status_label.configure(
+            self.ui_queue.put(lambda m=err_msg: self._log_event(f"Error: {m}", None))
+            self.ui_queue.put(lambda m=err_msg: self.status_label.configure(
                 text=f"Error: {m}", text_color="#ef4444"
             ))
         finally:
@@ -285,7 +287,7 @@ class ProAVShokoGUI:
             'platform_info': self.platform_info
         }
 
-        self.root.after(0, self._update_tree_display, usb_tree, hops_data, stability, displays)
+        self.ui_queue.put(lambda: self._update_tree_display(usb_tree, hops_data, stability, displays))
         self._log_external_ports(usb_tree, stability)
 
     def _log_external_ports(self, usb_tree, stability):
@@ -372,7 +374,7 @@ class ProAVShokoGUI:
             msg = f"RE-CONNECTED: {model}"
         else:
             msg = f"CONNECTED: {model}"
-        self.root.after(0, self._log_event, msg, 'event_connect')
+        self.ui_queue.put(lambda m=msg: self._log_event(m, 'event_connect'))
 
         if not self._jitter_warned(model, now):
             self._check_jitter(model, now)
@@ -385,7 +387,7 @@ class ProAVShokoGUI:
         cutoff = now - 30.0
         self.event_log = [e for e in self.event_log if e[2] >= cutoff]
 
-        self.root.after(0, self._log_event, f"DISCONNECTED: {model}", 'event_disconnect')
+        self.ui_queue.put(lambda m=model: self._log_event(f"DISCONNECTED: {m}", 'event_disconnect'))
 
         if not self._jitter_warned(model, now):
             self._check_jitter(model, now)
@@ -400,8 +402,8 @@ class ProAVShokoGUI:
         disconnects = sum(1 for _, t, _ in recent if t == 'disconnect')
         if connects >= 2 and disconnects >= 2:
             self.jitter_warned_models.add(model)
-            self.root.after(0, self._log_event,
-                f"JITTER: {model} — rapid connect/disconnect", 'event_disconnect')
+            self.ui_queue.put(lambda m=model: self._log_event(
+                f"JITTER: {m} — rapid connect/disconnect", 'event_disconnect'))
 
     def _log_event(self, message, tag):
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -594,6 +596,25 @@ class ProAVShokoGUI:
             pass
         finally:
             self.root.after(100, self._update_log)
+
+    def _process_ui_queue(self):
+        """Run UI updates submitted from background threads on the main thread.
+
+        Tkinter is not thread-safe, and calling root.after() from a worker
+        thread silently drops the callback on macOS. All worker-thread UI
+        work is pushed here as callables and executed on the main thread.
+        """
+        try:
+            while True:
+                callback = self.ui_queue.get_nowait()
+                try:
+                    callback()
+                except Exception as e:
+                    print(f"UI update error: {e}")
+        except queue.Empty:
+            pass
+        finally:
+            self.root.after(100, self._process_ui_queue)
 
     def _stop_monitoring(self):
         if self.is_monitoring and self.usb_analyzer:
