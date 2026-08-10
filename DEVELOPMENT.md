@@ -14,6 +14,24 @@ No installation or Python required.
 
 ### 2. Python (run from source) — any platform
 
+Easiest with [`uv`](https://docs.astral.sh/uv/) (downloads its own Python, so system
+Python 3.9 on macOS is fine):
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uvx --python 3.12 --from "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" proav-shoko
+```
+
+Or from a local clone:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.local/bin/env
+uv run python run.py --gui   # GUI mode
+uv run python run.py --cli   # CLI mode
+```
+
+Or with pip (requires Python ≥ 3.10):
+
 ```bash
 pip install -e .
 proav-shoko --cli

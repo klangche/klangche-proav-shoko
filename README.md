@@ -20,9 +20,11 @@ Download the latest release for your platform:
 
 **Python (any platform) — temp install, no permanent setup**
 
+Paste one line into Terminal or PowerShell. Uses [`uv`](https://docs.astral.sh/uv/), which downloads its own Python — **no existing Python installation is required**, and it works even if your system Python is 3.9 (macOS default). The CLI opens automatically.
+
 *Unix/macOS (and WSL):*
 ```bash
-pip install --quiet --target /tmp/proav-shoko "git+https://github.com/klangche/klangche-proav-shoko.git"; PYTHONPATH=/tmp/proav-shoko python3 -m src
+curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uvx --python 3.12 --from "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" proav-shoko
 ```
 
 *Windows PowerShell:*
@@ -30,9 +32,13 @@ pip install --quiet --target /tmp/proav-shoko "git+https://github.com/klangche/k
 pip install --quiet --target "$env:TEMP\\proav-shoko" git+https://github.com/klangche/klangche-proav-shoko.git; $env:PYTHONPATH="$env:TEMP\\proav-shoko"; python -m src
 ```
 
+**PowerShell (Windows)**
+```powershell
+iex (irm https://raw.githubusercontent.com/klangche/klangche-proav-shoko/main/proav-shoko.ps1)
+```
 Copy and paste into PowerShell.
 
----
+
 
 ## Table of Contents
 
@@ -76,6 +82,21 @@ In modern meeting rooms we often see:
 
 ---
 
+## Features
+
+| Feature | Description | Status |
+|---------|-------------|--------|
+| USB Tree | Hierarchical view of all connected devices | ✅ |
+| Hops & Tiers | Calculates the number of levels and maximum depth | ✅ |
+| Stability Assessment | Color-coded based on chain length | ✅ |
+| Apple Silicon Warning | Special warning at 5+ hops | ✅ |
+| Display Information | Shows connected displays with resolution | ✅ |
+| HTML Report | Dark background, identical to the terminal | ✅ |
+| PDF Report | Bundled weasyprint, no extra install | ✅ |
+| GUI | Live overview with tree and log | ✅ |
+| Cross-platform | Windows exe, macOS Universal, Linux, Python, PowerShell | ✅ |
+
+---
 
 ## Tech Stack
 
