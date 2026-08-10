@@ -22,7 +22,7 @@ Download the latest release for your platform:
 
 *Unix/macOS (and WSL):*
 ```bash
-pip install --quiet --target /tmp/proav-shoko "git+https://github.com/klangche/klangche-proav-shoko.git"; PYTHONPATH=/tmp/proav-shoko python3 -m src
+python3 -m pip install --quiet --target /tmp/proav-shoko "git+https://github.com/klangche/klangche-proav-shoko.git"; PYTHONPATH=/tmp/proav-shoko python3 -m src
 ```
 
 *Windows PowerShell:*
