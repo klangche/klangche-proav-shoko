@@ -31,7 +31,6 @@ curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uvx --python 3.1
 ```powershell
 irm https://astral.sh/uv/install.ps1 | iex; & "$env:USERPROFILE\.local\bin\uvx.exe" --python 3.12 --from "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" proav-shoko --gui
 ```
-*Click Copy, then paste to PowerShell (no admin required)*
 
 ### CLI version — Click Copy, then paste to Terminal (no sudo required)
 
@@ -44,7 +43,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uvx --python 3.1
 ```powershell
 pip install --quiet --target "$env:TEMP\\proav-shoko" git+https://github.com/klangche/klangche-proav-shoko.git; $env:PYTHONPATH="$env:TEMP\\proav-shoko"; python -m src
 ```
-*Click Copy, then paste to PowerShell (no admin required)*
+
 
 <<<<<<< HEAD
 **PowerShell (Windows)**
