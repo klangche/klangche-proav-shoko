@@ -18,7 +18,7 @@ Easiest with [`uv`](https://docs.astral.sh/uv/) (downloads its own Python, so sy
 Python 3.9 on macOS is fine):
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uvx --python 3.12 --from "git+https://github.com/klangche/klangche-proav-shoko.git" proav-shoko --gui
+curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uvx --python 3.12 --from "git+https://github.com/klangche/klangche-proav-shoko.git" proav-shoko
 ```
 
 Or from a local clone:
@@ -26,7 +26,7 @@ Or from a local clone:
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source $HOME/.local/bin/env
-uv run python run.py         # GUI mode
+uv run python run.py --gui   # GUI mode
 uv run python run.py --cli   # CLI mode
 ```
 

@@ -20,19 +20,19 @@ Download the latest release for your platform:
 
 **Python (any platform) — temp install, no permanent setup**
 
-Paste one line into Terminal or PowerShell. Uses [`uv`](https://docs.astral.sh/uv/), which downloads its own Python — **no existing Python installation is required**, and it works even if your system Python is 3.9 (macOS default). The GUI opens automatically.
+Paste one line into Terminal or PowerShell. Uses [`uv`](https://docs.astral.sh/uv/), which downloads its own Python — **no existing Python installation is required**, and it works even if your system Python is 3.9 (macOS default). The CLI opens automatically.
 
 *Unix/macOS (and WSL):*
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uvx --python 3.12 --from "git+https://github.com/klangche/klangche-proav-shoko.git" proav-shoko --gui
+curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uvx --python 3.12 --from "git+https://github.com/klangche/klangche-proav-shoko.git" proav-shoko
 ```
 
 *Windows PowerShell:*
 ```powershell
-irm https://astral.sh/uv/install.ps1 | iex; & "$env:USERPROFILE\.local\bin\uvx.exe" --python 3.12 --from "git+https://github.com/klangche/klangche-proav-shoko.git" proav-shoko --gui
+irm https://astral.sh/uv/install.ps1 | iex; & "$env:USERPROFILE\.local\bin\uvx.exe" --python 3.12 --from "git+https://github.com/klangche/klangche-proav-shoko.git" proav-shoko
 ```
 
-> For CLI mode, drop `--gui`. (pip alternative — requires Python ≥ 3.10: `python3 -m pip install --target /tmp/proav-shoko "git+https://github.com/klangche/klangche-proav-shoko.git" && PYTHONPATH=/tmp/proav-shoko python3 -m src`.)
+> Add `--gui` for the GUI version. (pip alternative — requires Python ≥ 3.10: `python3 -m pip install --target /tmp/proav-shoko "git+https://github.com/klangche/klangche-proav-shoko.git" && PYTHONPATH=/tmp/proav-shoko python3 -m src`.)
 
 > **Note (pip alternative):** The package requires **Python ≥ 3.10**. If you have a suitable
 > Python, `python3 -m pip install --target /tmp/proav-shoko "git+https://github.com/klangche/klangche-proav-shoko.git"` and `PYTHONPATH=/tmp/proav-shoko python3 -m src` also work.
