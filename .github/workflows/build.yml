@@ -139,6 +139,8 @@ jobs:
         run: brew install pango
       - name: Generate .ico
         run: python scripts/generate_icon.py
+      - name: Generate .icns
+        run: python scripts/generate_icns.py
       - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
@@ -161,7 +163,7 @@ jobs:
           mkdir -p "dist/${BUNDLE_NAME}/Contents/MacOS"
           cp "dist/ProAV Shoko" "dist/${BUNDLE_NAME}/Contents/MacOS/ProAV Shoko"
           mkdir -p "dist/${BUNDLE_NAME}/Contents/Resources"
-          cp "src/resources/shoko-icon.ico" "dist/${BUNDLE_NAME}/Contents/Resources/" 2>/dev/null || true
+          cp "src/resources/shoko-icon.icns" "dist/${BUNDLE_NAME}/Contents/Resources/shoko-icon.icns"
           {
             echo '<?xml version="1.0" encoding="UTF-8"?>'
             echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
@@ -169,6 +171,8 @@ jobs:
             echo '<dict>'
             echo '  <key>CFBundleExecutable</key>'
             echo '  <string>ProAV Shoko</string>'
+            echo '  <key>CFBundleIconFile</key>'
+            echo '  <string>shoko-icon</string>'
             echo '  <key>CFBundleIdentifier</key>'
             echo '  <string>com.klangche.proav-shoko</string>'
             echo '  <key>CFBundleName</key>'
@@ -184,6 +188,7 @@ jobs:
             echo '</dict>'
             echo '</plist>'
           } > "dist/${BUNDLE_NAME}/Contents/Info.plist"
+          codesign --force --deep --sign - "dist/${BUNDLE_NAME}"
           rm "dist/ProAV Shoko"
           echo "Created ${BUNDLE_NAME}"
       - name: Smoke test
@@ -197,9 +202,15 @@ jobs:
           VER="${{ needs.bump-version.outputs.version }}"
           APP_NAME="ProAV Shoko MacOS ${VER}.app"
           DMG_NAME="ProAV Shoko MacOS ${VER}.dmg"
+          STAGE="dmg-staging"
           cd dist
-          hdiutil create -volname "ProAV Shoko" -srcfolder "$APP_NAME" -ov -format UDZO "$DMG_NAME"
-          rm -rf "$APP_NAME"
+          rm -rf "$STAGE"
+          mkdir -p "$STAGE"
+          cp -R "$APP_NAME" "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+          sed -e "s#__APP_NAME__#${APP_NAME}#g" ../scripts/dmg/README-macOS.txt > "$STAGE/How to run ProAV Shoko.txt"
+          hdiutil create -volname "ProAV Shoko" -srcfolder "$STAGE" -ov -format UDZO "$DMG_NAME"
+          rm -rf "$APP_NAME" "$STAGE"
       - name: Upload .dmg
         uses: actions/upload-artifact@v6
         with:
