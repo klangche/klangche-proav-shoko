@@ -18,15 +18,14 @@ Analyze, verify and troubleshoot USB connections in meeting rooms and BYOD envir
 |----------|----------|
 | **Windows, macOS, Linux** | [`ProAV Shoko`](https://github.com/klangche/klangche-proav-shoko/releases) — Download and run! |
 
-Or run straight from source — **no Python, no git, no admin/sudo needed**:
+**Or run through Shell:**
 
-### GUI version
+### GUI version — Click Copy, then paste to Terminal (no sudo required)
 
 *Terminal (Mac / Linux):*
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uvx --python 3.12 --from "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" proav-shoko --gui
 ```
-*Click Copy, then paste to Terminal (no sudo required)*
 
 *PowerShell (Windows):*
 ```powershell
@@ -34,21 +33,18 @@ irm https://astral.sh/uv/install.ps1 | iex; & "$env:USERPROFILE\.local\bin\uvx.e
 ```
 *Click Copy, then paste to PowerShell (no admin required)*
 
-### CLI version
+### CLI version — Click Copy, then paste to Terminal (no sudo required)
 
 *Terminal (Mac / Linux):*
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh && ~/.local/bin/uvx --python 3.12 --from "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" proav-shoko
 ```
-*Click Copy, then paste to Terminal (no sudo required)*
 
 *PowerShell (Windows):*
 ```powershell
 irm https://astral.sh/uv/install.ps1 | iex; & "$env:USERPROFILE\.local\bin\uvx.exe" --python 3.12 --from "https://github.com/klangche/klangche-proav-shoko/archive/refs/heads/main.zip" proav-shoko
 ```
 *Click Copy, then paste to PowerShell (no admin required)*
-
-See [How to Run](#how-to-run) for alternatives and tips.
 
 
 
